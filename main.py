@@ -2,24 +2,29 @@ from collections import defaultdict
 
 ENGINE_NAME = "ARYA"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+TEST_FEN = "r1b1k1nr/p2p1pNp/n2B4/1p1NP2P/6P1/3P1Q2/P1P1K3/q5b1 b KQkq - 1 2"
 
 class Array2DBoard:
     def __init__(self):
         self.board = [[" " for _ in range(8)] for _ in range(8)]
         self.whiteToPlay = True
 
-    # TODO: full handle all possible fen strings
+    # TODO: fully handle all possible fen strings
     def setPositionWithFen(self, fen):
         fenArr = fen.split(" ")
         self.whiteToPlay = True if fenArr[1] == "w" else False
 
         rows = fenArr[0].split("/")
-        for i in range(len(rows)):
-            if rows[i] == "8":
-                self.board[i] = [" " for _ in range(8)]
-                continue
-            for j in range(len(rows[i])):
-                self.board[i][j] = rows[i][j]
+        for r in range(len(rows)):
+            empties = 0
+            for c in range(len(rows[r])):
+                print("{} {} {}".format(rows[r][c], str(c), empties))
+                if rows[r][c].isdigit():
+                    for cp in range(int(rows[r][c])):
+                        self.board[r][c + empties + cp] = " "
+                    empties += int(rows[r][c]) - 1
+                    continue
+                self.board[r][c + empties] = rows[r][c]
 
     def updateWithMove(self, move):
         """
@@ -112,7 +117,7 @@ class Engine:
         assert(words[0] == "position")
 
         if words[1] == "startpos":
-            self.board.setPositionWithFen(STARTING_FEN)
+            self.board.setPositionWithFen(TEST_FEN)
             if len(words) > 2 and words[2] == "moves":
                 for move in words[3:]:
                     self.board.updateWithMove(move)
