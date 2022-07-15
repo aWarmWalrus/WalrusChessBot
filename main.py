@@ -5,6 +5,8 @@ from collections import defaultdict
 ENGINE_NAME = "ARYA"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 TEST_FEN = "r1b1k1nr/p2p1pNp/n1B5/1p1NPR1P/6P1/3P1Q2/P1P1K3/qR4b1 b KQkq - 1 2"
+KING_CHECK_BLACK = "3k4/8/3P4/8/8/8/8/K7 b - - 1 2"
+KING_CHECK_WHITE = "3k4/8/8/8/8/3p4/8/3K4 w - - 1 2"
 BOARD_SIZE = 8
 ROOK_DIRS = [(-1,0),(1,0),(0,-1),(0,1)]
 BISHOP_DIRS = [(-1,-1),(-1,1),(1,-1),(1,1)]
@@ -38,12 +40,12 @@ def findPiece(piece, board):
 class Array2DBoard:
     def __init__(self, board = None, whiteToPlay = True):
         if board is None:
-            self.board = [[" " for _ in range(8)] for _ in range(8)]
+            self.board = [[" " for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
         else:
             assert(isinstance(board, list))
-            assert(len(board) == 8)
-            assert(len(board[0]) == 8)
-            self.board = deepcopy(board)
+            assert(len(board) == BOARD_SIZE)
+            assert(len(board[0]) == BOARD_SIZE)
+            self.board = board
         self.whiteToPlay = whiteToPlay
 
     # TODO: handle castling logic.
@@ -72,7 +74,8 @@ class Array2DBoard:
         assert(len(move) >= 4 and len(move) <= 5)
         colMap = {'a':0, 'b':1, 'c':2, 'd':3, 'e':4, 'f':5, 'g':6, 'h':7}
 
-        piece = self.board[8-int(move[1])][colMap[move[0]]]
+        newBoard = deepcopy(self.board)
+        piece = newBoard[8-int(move[1])][colMap[move[0]]]
 
         # Right now, keep the legality checks simple and just trust in the GUI
         # to send us legal moves only.
@@ -83,9 +86,9 @@ class Array2DBoard:
         #  - en passant
         #  - castling
         #  - pawn promotion
-        self.board[8-int(move[1])][colMap[move[0]]] = " "
-        self.board[8-int(move[3])][colMap[move[2]]] = piece
-        return Array2DBoard(self.board, not self.whiteToPlay)
+        newBoard[8-int(move[1])][colMap[move[0]]] = " "
+        newBoard[8-int(move[3])][colMap[move[2]]] = piece
+        return Array2DBoard(newBoard, not self.whiteToPlay)
 
     def legalMovesForLinearMover(self, piece, coord, directions):
         moves = []
@@ -173,8 +176,46 @@ class Array2DBoard:
         active player's king is in check.
         """
         king = "K" if self.whiteToPlay else "k"
-        kCoord = findPiece(king, self.board)
-        # TODO: implement this method
+        newBoard = self.makeMove(move).board
+        kCoord = findPiece(king, newBoard)
+        # Check for enemy knights
+        for d in KNIGHT_DIRS:
+            tmp = (kCoord[0] + d[0], kCoord[1] + d[1])
+            if outOfBounds(tmp):
+                continue
+            piece = newBoard[tmp[0]][tmp[1]]
+            if piece.lower() == "n" and areEnemies(piece, king):
+                return False
+        # Check for enemy Rooks (and queen)
+        for d in ROOK_DIRS:
+            tmp = (kCoord[0] + d[0], kCoord[1] + d[1])
+            while not outOfBounds(tmp) and newBoard[tmp[0]][tmp[1]] == " ":
+                tmp = (tmp[0] + d[0], tmp[1] + d[1])
+            if outOfBounds(tmp):
+                continue
+            piece = newBoard[tmp[0]][tmp[1]]
+            if piece.lower() in "rq" and areEnemies(piece, king):
+                return False
+        # Check for enemy Bishops (and queen)
+        for d in BISHOP_DIRS:
+            tmp = (kCoord[0] + d[0], kCoord[1] + d[1])
+            while not outOfBounds(tmp) and newBoard[tmp[0]][tmp[1]] == " ":
+                tmp = (tmp[0] + d[0], tmp[1] + d[1])
+            if outOfBounds(tmp):
+                continue
+            piece = newBoard[tmp[0]][tmp[1]]
+            if piece.lower() in "bq" and areEnemies(piece, king):
+                return False
+        # Check for enemy pawns
+        forward = -1 if self.whiteToPlay else 1
+        diagonalTakes = [(kCoord[0] + forward, kCoord[1] + 1), \
+                        (kCoord[0] + forward, kCoord[1] - 1)]
+        for diag in diagonalTakes:
+            if outOfBounds(diag):
+                continue
+            piece = newBoard[diag[0]][diag[1]]
+            if piece.lower() == "p" and areEnemies(piece, king):
+                return False
         return True
 
 
@@ -224,7 +265,7 @@ class Engine:
         assert(words[0] == "position")
 
         if words[1] == "startpos":
-            self.board.setPositionWithFen(STARTING_FEN)
+            self.board.setPositionWithFen(KING_CHECK_BLACK)
             if len(words) > 2 and words[2] == "moves":
                 for move in words[3:]:
                     self.board = self.board.makeMove(move)
