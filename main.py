@@ -2,14 +2,32 @@ from collections import defaultdict
 
 ENGINE_NAME = "ARYA"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-TEST_FEN = "r1b1k1nr/p2p1pNp/n2B4/1p1NP2P/6P1/3P1Q2/P1P1K3/q5b1 b KQkq - 1 2"
+TEST_FEN = "r1b1k1nr/p2p1pNp/n1B5/1p1NPR1P/6P1/3P1Q2/P1P1K3/qR4b1 b KQkq - 1 2"
+
+def colToFile(colNum):
+    col = int(colNum) if type(colNum) == str else colNum
+    return "abcdefgh"[col]
+
+def coordToAlgebraic(coord):
+    """
+    Assumes |coord| is a 2D tuple of ints, representing (row, column).
+    Note that this flips the order of row and column because algebraic notation
+    is formatted as <file><rank> (col then row).
+    """
+    return colToFile(coord[1]) + str(8 - coord[0])
+
+def areEnemies(piece1, piece2):
+    return piece1.isupper() != piece2.isupper()
+
+def outOfBounds(coord):
+    return coord[0] < 0 or coord[0] > 7 or coord[1] < 0 or coord[1] > 7
 
 class Array2DBoard:
     def __init__(self):
         self.board = [[" " for _ in range(8)] for _ in range(8)]
         self.whiteToPlay = True
 
-    # TODO: fully handle all possible fen strings
+    # TODO: handle castling logic.
     def setPositionWithFen(self, fen):
         fenArr = fen.split(" ")
         self.whiteToPlay = True if fenArr[1] == "w" else False
@@ -18,13 +36,13 @@ class Array2DBoard:
         for r in range(len(rows)):
             empties = 0
             for c in range(len(rows[r])):
-                print("{} {} {}".format(rows[r][c], str(c), empties))
                 if rows[r][c].isdigit():
                     for cp in range(int(rows[r][c])):
                         self.board[r][c + empties + cp] = " "
                     empties += int(rows[r][c]) - 1
                     continue
                 self.board[r][c + empties] = rows[r][c]
+
 
     def updateWithMove(self, move):
         """
@@ -50,25 +68,85 @@ class Array2DBoard:
         self.board[8-int(move[3])][colMap[move[2]]] = piece
         self.whiteToPlay = not self.whiteToPlay
 
+    def legalMovesForLinearMover(self, piece, coord, board, directions):
+        moves = []
+        init = coordToAlgebraic((coord[0], coord[1]))
+        for d in directions:
+            tmp = (coord[0] + d[0], coord[1] + d[1])
+            while not outOfBounds(tmp) and board[tmp[0]][tmp[1]] == " ":
+                moves.append(init + coordToAlgebraic(tmp))
+                tmp = (tmp[0] + d[0], tmp[1] + d[1])
+            if not outOfBounds(tmp) and areEnemies(board[tmp[0]][tmp[1]], piece):
+                moves.append(init + coordToAlgebraic(tmp))
+        return moves
 
-    def legalMovesForPiece(self, piece, coord):
-        print(piece)
-        print(coord)
+    def legalMovesForPiece(self, piece, coord, board):
+        moves = []
+        init = coordToAlgebraic((coord[0], coord[1]))
         match piece.lower():
-            case "p":
+            case "p":  # Pawns
+                forward = -1 if self.whiteToPlay else 1
 
-                return ["a"]
+                # Diagonal take logic
+                diagonalTakes = [(coord[0] + forward, coord[1] - 1), \
+                                 (coord[0] + forward, coord[1] + 1)]
+                for diag in diagonalTakes:
+                    if outOfBounds(diag):
+                        continue
+                    destPiece = board[diag[0]][diag[1]]
+                    if destPiece != " " and areEnemies(piece, destPiece):
+                        moves.append(init + coordToAlgebraic(diag))
+
+                # Single step forward logic
+                oneStep = (coord[0] + forward, coord[1])
+                if outOfBounds(oneStep) or board[oneStep[0]][oneStep[1]] != " ":
+                    # If one step is out of bounds or blocked, it will be true
+                    # with two steps too.
+                    return moves
+                moves.append(init + coordToAlgebraic(oneStep))
+
+                # Double step forward logic
+                baseRow = 6 if self.whiteToPlay else 1
+                if coord[0] != baseRow:
+                    return moves
+                doubleStep = (coord[0] + forward * 2, coord[1])
+                if outOfBounds(doubleStep) or \
+                        board[doubleStep[0]][doubleStep[1]] != " ":
+                    return moves
+                moves.append(init + coordToAlgebraic(doubleStep))
+                return moves
             case "r":
-                return ["a"]
+                directions = [(-1,0),(1,0),(0,-1),(0,1)]
+                return self.legalMovesForLinearMover(piece, coord, board, directions)
             case "b":
-                return ["a"]
+                directions = [(-1,-1),(1,1),(1,-1),(-1,1)]
+                return self.legalMovesForLinearMover(piece, coord, board, directions)
             case "n":
-                return ["a"]
+                directions = [(-2,-1),(-2,1),(2,-1),(2,1),(-1,-2),(-1,2),(1,-2),(1,2)]
+                for d in directions:
+                    tmp = (coord[0] + d[0], coord[1] + d[1])
+                    if outOfBounds(tmp):
+                        continue
+                    targetPiece = board[tmp[0]][tmp[1]]
+                    if targetPiece == " " or areEnemies(targetPiece, piece):
+                        moves.append(init + coordToAlgebraic(tmp))
+                return moves
             case "q":
-                return ["a"]
+                directions = [(-1,-1),(1,1),(1,-1),(-1,1), \
+                              (-1,0),(1,0),(0,-1),(0,1)]
+                return self.legalMovesForLinearMover(piece, coord, board, directions)
             case "k":
-                return ["a"]
-        return []
+                directions = [(-1,-1),(1,1),(1,-1),(-1,1), \
+                              (-1,0),(1,0),(0,-1),(0,1)]
+                for d in directions:
+                    tmp = (coord[0] + d[0], coord[1] + d[1])
+                    if outOfBounds(tmp):
+                        continue
+                    targetPiece = board[tmp[0]][tmp[1]]
+                    if targetPiece == " " or areEnemies(targetPiece, piece):
+                        moves.append(init + coordToAlgebraic(tmp))
+                return moves
+        return moves
 
 
     def legalMoves(self):
@@ -84,7 +162,7 @@ class Array2DBoard:
                     allPieces.append((piece, r, c))
         legalMoves = []
         for piece, r, c in allPieces:
-            legalMoves += self.legalMovesForPiece(piece, (r, c))
+            legalMoves += self.legalMovesForPiece(piece, (r, c), self.board)
         return legalMoves
 
     def prettyPrint(self):
