@@ -1,8 +1,15 @@
+from copy import deepcopy
+import random
 from collections import defaultdict
 
 ENGINE_NAME = "ARYA"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 TEST_FEN = "r1b1k1nr/p2p1pNp/n1B5/1p1NPR1P/6P1/3P1Q2/P1P1K3/qR4b1 b KQkq - 1 2"
+BOARD_SIZE = 8
+ROOK_DIRS = [(-1,0),(1,0),(0,-1),(0,1)]
+BISHOP_DIRS = [(-1,-1),(-1,1),(1,-1),(1,1)]
+KNIGHT_DIRS = [(-2,-1),(-2,1),(2,-1),(2,1),(-1,-2),(-1,2),(1,-2),(1,2)]
+ROYAL_DIRS = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
 
 def colToFile(colNum):
     col = int(colNum) if type(colNum) == str else colNum
@@ -22,10 +29,22 @@ def areEnemies(piece1, piece2):
 def outOfBounds(coord):
     return coord[0] < 0 or coord[0] > 7 or coord[1] < 0 or coord[1] > 7
 
+def findPiece(piece, board):
+    for r in range(BOARD_SIZE):
+        for c in range(BOARD_SIZE):
+            if board[r][c] == piece:
+                return (r,c)
+
 class Array2DBoard:
-    def __init__(self):
-        self.board = [[" " for _ in range(8)] for _ in range(8)]
-        self.whiteToPlay = True
+    def __init__(self, board = None, whiteToPlay = True):
+        if board is None:
+            self.board = [[" " for _ in range(8)] for _ in range(8)]
+        else:
+            assert(isinstance(board, list))
+            assert(len(board) == 8)
+            assert(len(board[0]) == 8)
+            self.board = deepcopy(board)
+        self.whiteToPlay = whiteToPlay
 
     # TODO: handle castling logic.
     def setPositionWithFen(self, fen):
@@ -44,7 +63,7 @@ class Array2DBoard:
                 self.board[r][c + empties] = rows[r][c]
 
 
-    def updateWithMove(self, move):
+    def makeMove(self, move):
         """
         |move| should be a string of length 4 or 5 representing the piece to be
         moved and its end location.
@@ -66,87 +85,97 @@ class Array2DBoard:
         #  - pawn promotion
         self.board[8-int(move[1])][colMap[move[0]]] = " "
         self.board[8-int(move[3])][colMap[move[2]]] = piece
-        self.whiteToPlay = not self.whiteToPlay
+        return Array2DBoard(self.board, not self.whiteToPlay)
 
-    def legalMovesForLinearMover(self, piece, coord, board, directions):
+    def legalMovesForLinearMover(self, piece, coord, directions):
         moves = []
         init = coordToAlgebraic((coord[0], coord[1]))
         for d in directions:
             tmp = (coord[0] + d[0], coord[1] + d[1])
-            while not outOfBounds(tmp) and board[tmp[0]][tmp[1]] == " ":
+            while not outOfBounds(tmp) and self.board[tmp[0]][tmp[1]] == " ":
                 moves.append(init + coordToAlgebraic(tmp))
                 tmp = (tmp[0] + d[0], tmp[1] + d[1])
-            if not outOfBounds(tmp) and areEnemies(board[tmp[0]][tmp[1]], piece):
+            if not outOfBounds(tmp) and areEnemies(self.board[tmp[0]][tmp[1]], piece):
                 moves.append(init + coordToAlgebraic(tmp))
         return moves
 
-    def legalMovesForPiece(self, piece, coord, board):
+    def legalMovesForPawn(self, piece, coord):
         moves = []
         init = coordToAlgebraic((coord[0], coord[1]))
-        match piece.lower():
-            case "p":  # Pawns
-                forward = -1 if self.whiteToPlay else 1
+        forward = -1 if self.whiteToPlay else 1
 
-                # Diagonal take logic
-                diagonalTakes = [(coord[0] + forward, coord[1] - 1), \
-                                 (coord[0] + forward, coord[1] + 1)]
-                for diag in diagonalTakes:
-                    if outOfBounds(diag):
-                        continue
-                    destPiece = board[diag[0]][diag[1]]
-                    if destPiece != " " and areEnemies(piece, destPiece):
-                        moves.append(init + coordToAlgebraic(diag))
+        # Diagonal take logic
+        diagonalTakes = [(coord[0] + forward, coord[1] - 1), \
+                         (coord[0] + forward, coord[1] + 1)]
+        for diag in diagonalTakes:
+            if outOfBounds(diag):
+                continue
+            destPiece = self.board[diag[0]][diag[1]]
+            if destPiece != " " and areEnemies(piece, destPiece):
+                moves.append(init + coordToAlgebraic(diag))
 
-                # Single step forward logic
-                oneStep = (coord[0] + forward, coord[1])
-                if outOfBounds(oneStep) or board[oneStep[0]][oneStep[1]] != " ":
-                    # If one step is out of bounds or blocked, it will be true
-                    # with two steps too.
-                    return moves
-                moves.append(init + coordToAlgebraic(oneStep))
+        # Single step forward logic
+        oneStep = (coord[0] + forward, coord[1])
+        if outOfBounds(oneStep) or self.board[oneStep[0]][oneStep[1]] != " ":
+            # If one step forward is out of bounds or blocked, two steps foward
+            # would be as well.
+            return moves
+        moves.append(init + coordToAlgebraic(oneStep))
 
-                # Double step forward logic
-                baseRow = 6 if self.whiteToPlay else 1
-                if coord[0] != baseRow:
-                    return moves
-                doubleStep = (coord[0] + forward * 2, coord[1])
-                if outOfBounds(doubleStep) or \
-                        board[doubleStep[0]][doubleStep[1]] != " ":
-                    return moves
-                moves.append(init + coordToAlgebraic(doubleStep))
-                return moves
-            case "r":
-                directions = [(-1,0),(1,0),(0,-1),(0,1)]
-                return self.legalMovesForLinearMover(piece, coord, board, directions)
-            case "b":
-                directions = [(-1,-1),(1,1),(1,-1),(-1,1)]
-                return self.legalMovesForLinearMover(piece, coord, board, directions)
-            case "n":
-                directions = [(-2,-1),(-2,1),(2,-1),(2,1),(-1,-2),(-1,2),(1,-2),(1,2)]
-                for d in directions:
-                    tmp = (coord[0] + d[0], coord[1] + d[1])
-                    if outOfBounds(tmp):
-                        continue
-                    targetPiece = board[tmp[0]][tmp[1]]
-                    if targetPiece == " " or areEnemies(targetPiece, piece):
-                        moves.append(init + coordToAlgebraic(tmp))
-                return moves
-            case "q":
-                directions = [(-1,-1),(1,1),(1,-1),(-1,1), \
-                              (-1,0),(1,0),(0,-1),(0,1)]
-                return self.legalMovesForLinearMover(piece, coord, board, directions)
-            case "k":
-                directions = [(-1,-1),(1,1),(1,-1),(-1,1), \
-                              (-1,0),(1,0),(0,-1),(0,1)]
-                for d in directions:
-                    tmp = (coord[0] + d[0], coord[1] + d[1])
-                    if outOfBounds(tmp):
-                        continue
-                    targetPiece = board[tmp[0]][tmp[1]]
-                    if targetPiece == " " or areEnemies(targetPiece, piece):
-                        moves.append(init + coordToAlgebraic(tmp))
-                return moves
+        # Double step forward logic
+        baseRow = 6 if self.whiteToPlay else 1
+        if coord[0] != baseRow:
+            return moves
+        doubleStep = (coord[0] + forward * 2, coord[1])
+        if outOfBounds(doubleStep) or \
+                self.board[doubleStep[0]][doubleStep[1]] != " ":
+            return moves
+        moves.append(init + coordToAlgebraic(doubleStep))
         return moves
+
+
+    def legalMovesForPiece(self, piece, coord):
+        init = coordToAlgebraic((coord[0], coord[1]))
+        if piece.lower() == "p": # Pawns
+            return self.legalMovesForPawn(piece, coord)
+        elif piece.lower() == "r": # Rooks
+            return self.legalMovesForLinearMover(piece, coord, ROOK_DIRS)
+        elif piece.lower() == "b": # Bishops
+            return self.legalMovesForLinearMover(piece, coord, BISHOP_DIRS)
+        elif piece.lower() == "n": # Knights
+            moves = []
+            for d in KNIGHT_DIRS:
+                tmp = (coord[0] + d[0], coord[1] + d[1])
+                if outOfBounds(tmp):
+                    continue
+                targetPiece = self.board[tmp[0]][tmp[1]]
+                if targetPiece == " " or areEnemies(targetPiece, piece):
+                    moves.append(init + coordToAlgebraic(tmp))
+            return moves
+        elif piece.lower() == "q":  # Queens
+            return self.legalMovesForLinearMover(piece, coord, ROYAL_DIRS)
+        elif piece.lower() == "k":  # Kings
+            moves = []
+            for d in ROYAL_DIRS:
+                tmp = (coord[0] + d[0], coord[1] + d[1])
+                if outOfBounds(tmp):
+                    continue
+                targetPiece = self.board[tmp[0]][tmp[1]]
+                if targetPiece == " " or areEnemies(targetPiece, piece):
+                    moves.append(init + coordToAlgebraic(tmp))
+            return moves
+        raise Exception("unknown piece on the board: " + piece)
+
+
+    def isKingSafe(self, move):
+        """
+        Returns false if the move causes board to be in a state in which the
+        active player's king is in check.
+        """
+        king = "K" if self.whiteToPlay else "k"
+        kCoord = findPiece(king, self.board)
+        # TODO: implement this method
+        return True
 
 
     def legalMoves(self):
@@ -162,7 +191,7 @@ class Array2DBoard:
                     allPieces.append((piece, r, c))
         legalMoves = []
         for piece, r, c in allPieces:
-            legalMoves += self.legalMovesForPiece(piece, (r, c), self.board)
+            legalMoves += filter(self.isKingSafe, self.legalMovesForPiece(piece, (r, c)))
         return legalMoves
 
     def prettyPrint(self):
@@ -195,13 +224,17 @@ class Engine:
         assert(words[0] == "position")
 
         if words[1] == "startpos":
-            self.board.setPositionWithFen(TEST_FEN)
+            self.board.setPositionWithFen(STARTING_FEN)
             if len(words) > 2 and words[2] == "moves":
                 for move in words[3:]:
-                    self.board.updateWithMove(move)
+                    self.board = self.board.makeMove(move)
                     self.board.prettyPrint()
         else:
             print("weird " + words.join())
+
+    def go(self):
+        moves = self.board.legalMoves()
+        print("bestmove " + random.choice(moves))
 
     def run(self):
         while True:
@@ -216,12 +249,8 @@ class Engine:
                 self.newGame()
             elif line.startswith("position"):
                 self.position(line)
-                # try:
-                #     self.position(line)
-                # except:
-                #     print("some error lol")
             elif line.startswith("go"):
-                print("GOING")
+                self.go()
             elif line.startswith("print"):
                 self.board.prettyPrint()
                 print(self.board.legalMoves())
