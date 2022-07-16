@@ -47,6 +47,9 @@ class Array2DBoard:
         self.whiteToPlay = whiteToPlay
         self.castles = castles
 
+    def isOpponentPiece(self, piece):
+        return piece.isupper() != self.whiteToPlay
+
     # TODO: handle castling logic.
     def setPositionWithFen(self, fen):
         fenArr = fen.split(" ")
@@ -62,12 +65,41 @@ class Array2DBoard:
                     empties += int(rows[r][c]) - 1
                     continue
                 self.board[r][c + empties] = rows[r][c]
+        self.castles = fenArr[2]
 
+    def castleLogic(self, move, piece, board):
+        newCastles = self.castles
+        if piece.lower() == "k":
+            if move in CASTLE_MOVES.keys():
+                rook = CASTLE_MOVES[move]
+                board[rook[0]][rook[1]] = " "
+                newFile = 5 if rook[1] == 7 else 3
+                board[rook[0]][newFile] = "R" if self.whiteToPlay else "r"
+            # Even if not castling, moving king cancels all castle possibility.
+            newCastles = newCastles.replace("K" if self.whiteToPlay else "k", "")
+            newCastles = newCastles.replace("Q" if self.whiteToPlay else "q", "")
+
+        # If our rook moves, remove that castle possibility
+        if piece.lower() == "r":
+            if move[0] == "a":
+                newCastles = newCastles.replace("Q" if self.whiteToPlay else "q", "")
+            elif move[0] == "h":
+                newCastles = newCastles.replace("K" if self.whiteToPlay else "k", "")
+
+        # If we just took on a starting rook square, remove opponent's castle possibility
+        oppRank = "8" if self.whiteToPlay else "1"
+        if move[3] == oppRank:
+            if move[2] == "h":
+                newCastles = newCastles.replace("k" if self.whiteToPlay else "K", "")
+            elif move[2] == "a":
+                newCastles = newCastles.replace("q" if self.whiteToPlay else "Q", "")
+        return newCastles
 
     def makeMove(self, move):
         """
         |move| should be a string of length 4 or 5 representing the piece to be
         moved and its end location.
+            <init file><init rank><dest file><dest rank>
         """
         assert(type(move) == str)
         assert(len(move) >= 4 and len(move) <= 5)
@@ -78,17 +110,12 @@ class Array2DBoard:
 
         # Right now, keep the legality checks simple and just trust in the GUI
         # to send us legal moves only.
-        if piece == " ":
+        if piece == " " or piece.isupper() != self.whiteToPlay:
             print("Illegal move: " + move)
             self.prettyPrint()
         newBoard[8-int(move[1])][colMap[move[0]]] = " "
 
-        # Castling logic: move the correct rook over
-        if piece.lower() == "k" and move in CASTLE_MOVES.keys():
-            rook = CASTLE_MOVES[move]
-            newBoard[rook[0]][rook[1]] = " "
-            newFile = 5 if rook[1] == 7 else 4
-            newBoard[rook[0]][newFile] = "R" if self.whiteToPlay else "r"
+        newCastles = self.castleLogic(move, piece, newBoard)
 
         # Pawn promotion logic
         if piece.lower() == "p" and move[3] in "18":
@@ -100,7 +127,7 @@ class Array2DBoard:
         # TODO: handle the following cases
         #  - en passant
         newBoard[8-int(move[3])][colMap[move[2]]] = piece
-        return Array2DBoard(newBoard, not self.whiteToPlay, self.castles)
+        return Array2DBoard(newBoard, not self.whiteToPlay, newCastles)
 
     def legalMovesForLinearMover(self, piece, coord, directions):
         moves = []
@@ -181,89 +208,67 @@ class Array2DBoard:
             return moves
         raise Exception("unknown piece on the board: " + piece)
 
-    def isKingAttackedByPiece(self, board, directions, pieces):
+    def isSquareAttackedByPiece(self, board, coord, directions, pieces):
         # multiStep means that |pieces| can move multiple tiles in one move. All
         # except the King, Pawns and Knights are regarded as multistep.
         multiStep = "r" in pieces or "b" in pieces or "q" in pieces
 
-        king = "K" if self.whiteToPlay else "k"
-        kCoord = findPiece(king, board)
         for d in directions:
-            tmp = (kCoord[0] + d[0], kCoord[1] + d[1])
+            tmp = (coord[0] + d[0], coord[1] + d[1])
             while multiStep and not outOfBounds(tmp) and board[tmp[0]][tmp[1]] == " ":
                 tmp = (tmp[0] + d[0], tmp[1] + d[1])
             if outOfBounds(tmp):
                 continue
             piece = board[tmp[0]][tmp[1]]
-            if piece.lower() in pieces and areEnemies(piece, king):
+            if piece.lower() in pieces and self.isOpponentPiece(piece):
                 return True
         return False
 
-
-    def isKingSafe(self, move):
-        """
-        Returns false if the move causes board to be in a state in which the
-        active player's king is in check.
-        """
-        king = "K" if self.whiteToPlay else "k"
-        newBoard = self.makeMove(move).board
-        kCoord = findPiece(king, newBoard)
+    def isSquareAttacked(self, board, coord):
         # Check for enemy knights
-        if self.isKingAttackedByPiece(newBoard, KNIGHT_DIRS, "n"):
-            return False
-        # for d in KNIGHT_DIRS:
-        #     tmp = (kCoord[0] + d[0], kCoord[1] + d[1])
-        #     if outOfBounds(tmp):
-        #         continue
-        #     piece = newBoard[tmp[0]][tmp[1]]
-        #     if piece.lower() == "n" and areEnemies(piece, king):
-        #         return False
-        # Check for enemy Rooks (and queen)
-        if self.isKingAttackedByPiece(newBoard, ROOK_DIRS, "rq"):
-            return False
-        # for d in ROOK_DIRS:
-        #     tmp = (kCoord[0] + d[0], kCoord[1] + d[1])
-        #     while not outOfBounds(tmp) and newBoard[tmp[0]][tmp[1]] == " ":
-        #         tmp = (tmp[0] + d[0], tmp[1] + d[1])
-        #     if outOfBounds(tmp):
-        #         continue
-        #     piece = newBoard[tmp[0]][tmp[1]]
-        #     if piece.lower() in "rq" and areEnemies(piece, king):
-        #         return False
-        # Check for enemy Bishops (and queen)
-        if self.isKingAttackedByPiece(newBoard, BISHOP_DIRS, "bq"):
-            return False
-        if self.isKingAttackedByPiece(newBoard, ROYAL_DIRS, "k"):
-            return False
-        # for d in BISHOP_DIRS:
-        #     tmp = (kCoord[0] + d[0], kCoord[1] + d[1])
-        #     while not outOfBounds(tmp) and newBoard[tmp[0]][tmp[1]] == " ":
-        #         tmp = (tmp[0] + d[0], tmp[1] + d[1])
-        #     if outOfBounds(tmp):
-        #         continue
-        #     piece = newBoard[tmp[0]][tmp[1]]
-        #     if piece.lower() in "bq" and areEnemies(piece, king):
-        #         return False
+        if self.isSquareAttackedByPiece(board, coord, KNIGHT_DIRS, "n") or \
+                self.isSquareAttackedByPiece(board, coord, ROOK_DIRS, "rq") or \
+                self.isSquareAttackedByPiece(board, coord, BISHOP_DIRS, "bq") or \
+                self.isSquareAttackedByPiece(board, coord, ROYAL_DIRS, "k"):
+            return True
         # Check for enemy pawns
         forward = -1 if self.whiteToPlay else 1
-        diagonalTakes = [(kCoord[0] + forward, kCoord[1] + 1), \
-                        (kCoord[0] + forward, kCoord[1] - 1)]
+        diagonalTakes = [(coord[0] + forward, coord[1] + 1), \
+                        (coord[0] + forward, coord[1] - 1)]
         for diag in diagonalTakes:
             if outOfBounds(diag):
                 continue
-            piece = newBoard[diag[0]][diag[1]]
-            if piece.lower() == "p" and areEnemies(piece, king):
-                return False
-        # Check for enemy King
-        # for d in ROYAL_DIRS:
-        #     tmp = (kCoord[0] + d[0], kCoord[1] + d[1])
-        #     if outOfBounds(tmp):
-        #         continue
-        #     piece = newBoard[tmp[0]][tmp[1]]
-        #     if piece.lower() == "k" and areEnemies(piece, king):
-        #         return False
-        return True
+            piece = board[diag[0]][diag[1]]
+            if piece.lower() == "p" and self.isOpponentPiece(piece):
+                return True
+        return False
 
+    def isKingSafeAfterMove(self, move):
+        king = "K" if self.whiteToPlay else "k"
+        newBoard = self.makeMove(move).board
+        return not self.isSquareAttacked(newBoard, findPiece(king, newBoard))
+
+    def legalCastleMoves(self):
+        legalCastles = {"Q":"e1c1", "K":"e1g1", "q":"e8c8", "k":"e8g8"}
+        moves = []
+        print(self.castles)
+        for c in self.castles:
+            if self.isOpponentPiece(c):
+                print("not same side")
+                continue
+            row = 7 if self.whiteToPlay else 0
+            # if the squares between the king and rook are empty
+            empties = [5,6] if c.lower() == "k" else [1,2,3]
+            unattacked = [4,5,6] if c.lower() == "k" else [2,3,4]
+            if any([self.board[row][col] != " " for col in empties]):
+                print("nonempty")
+                continue
+            if any([self.isSquareAttacked(self.board, (row, col)) for col in unattacked]):
+                print("attacked")
+                continue
+            moves.append(legalCastles[c])
+        print(moves)
+        return moves
 
     def legalMoves(self):
         allPieces = []
@@ -278,12 +283,11 @@ class Array2DBoard:
                     allPieces.append((piece, r, c))
         legalMoves = []
         for piece, r, c in allPieces:
-            legalMoves += filter(self.isKingSafe, self.legalMovesForPiece(piece, (r, c)))
-        # Add castle moves if they are still available
-        # if self.whiteToPlay and "KQ" in self.castles:
+            legalMoves += filter(self.isKingSafeAfterMove, \
+                            self.legalMovesForPiece(piece, (r, c)))
+        legalMoves += self.legalCastleMoves()
 
         return legalMoves
-
 
     def prettyPrint(self):
         print(" _ _ _ _ _ _ _ _")

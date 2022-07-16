@@ -5,6 +5,7 @@ from board import Array2DBoard
 ENGINE_NAME = "ARYA"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 TEST_FEN = "r1b1k1nr/p2p1pNp/n1B5/1p1NPR1P/6P1/3P1Q2/P1P1K3/qR4b1 b KQkq - 1 2"
+TEST2_FEN = "rnbqk2r/pppp1pp1/5n1p/1Bb1p3/4P2N/5P2/PPPP2PP/RNBQK2R b KQkq - 0 5"
 KING_CHECK_BLACK = "3k4/8/3P4/8/8/8/8/K7 b - - 1 2"
 KING_CHECK_WHITE = "3k4/8/8/8/8/3p4/8/3K4 w - - 1 2"
 
