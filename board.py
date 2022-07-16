@@ -154,25 +154,27 @@ class Array2DBoard:
                 continue
             destPiece = self.board[diag[0]][diag[1]]
             if destPiece != " " and areEnemies(piece, destPiece):
-                moves.append(init + coordToAlgebraic(diag))
+                if diag[0] in [0, 7]:  # pawn promotion
+                    [moves.append(init + coordToAlgebraic(diag) + p) for p in "qrbn"]
+                else:
+                    moves.append(init + coordToAlgebraic(diag))
 
         # Single step forward logic
         oneStep = (coord[0] + forward, coord[1])
         if outOfBounds(oneStep) or self.board[oneStep[0]][oneStep[1]] != " ":
-            # If one step forward is out of bounds or blocked, two steps foward
-            # would be as well.
             return moves
-        moves.append(init + coordToAlgebraic(oneStep))
+        if oneStep[0] in [0, 7]: # pawn promotion
+            [moves.append(init + coordToAlgebraic(oneStep) + p) for p in "qrbn"]
+        else:
+            moves.append(init + coordToAlgebraic(oneStep))
 
         # Double step forward logic
         baseRow = 6 if self.whiteToPlay else 1
         if coord[0] != baseRow:
             return moves
         doubleStep = (coord[0] + forward * 2, coord[1])
-        if outOfBounds(doubleStep) or \
-                self.board[doubleStep[0]][doubleStep[1]] != " ":
-            return moves
-        moves.append(init + coordToAlgebraic(doubleStep))
+        if self.board[doubleStep[0]][doubleStep[1]] == " ":
+            moves.append(init + coordToAlgebraic(doubleStep))
         return moves
 
 
@@ -251,23 +253,18 @@ class Array2DBoard:
     def legalCastleMoves(self):
         legalCastles = {"Q":"e1c1", "K":"e1g1", "q":"e8c8", "k":"e8g8"}
         moves = []
-        print(self.castles)
         for c in self.castles:
             if self.isOpponentPiece(c):
-                print("not same side")
                 continue
             row = 7 if self.whiteToPlay else 0
             # if the squares between the king and rook are empty
             empties = [5,6] if c.lower() == "k" else [1,2,3]
             unattacked = [4,5,6] if c.lower() == "k" else [2,3,4]
             if any([self.board[row][col] != " " for col in empties]):
-                print("nonempty")
                 continue
             if any([self.isSquareAttacked(self.board, (row, col)) for col in unattacked]):
-                print("attacked")
                 continue
             moves.append(legalCastles[c])
-        print(moves)
         return moves
 
     def legalMoves(self):

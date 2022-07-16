@@ -43,6 +43,9 @@ class Engine:
 
     def go(self):
         moves = self.board.legalMoves()
+        if len(moves) == 0:
+            print("Game over boiiii")
+            return
         print("bestmove " + random.choice(moves))
 
     def run(self):
@@ -63,7 +66,7 @@ class Engine:
             elif line.startswith("print"):
                 self.board.prettyPrint()
                 print(self.board.legalMoves())
-            elif line.startswith("end"):
+            elif line.startswith("end") or line.startswith("quit"):
                 print("goodbye")
                 break
 
