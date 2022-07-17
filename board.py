@@ -1,3 +1,12 @@
+"""
+Chess board implemented using a simple 2D array of strings. Very efficient. I
+know...
+
+Benchmarks:
+    boardInitialization: 13.267600000000005µs
+    startposMoves(50): 3.0164994ms
+    startposMoves(100): 6.0557866ms
+"""
 from copy import deepcopy
 
 BOARD_SIZE = 8
@@ -234,7 +243,7 @@ class Array2DBoard:
     def isSquareAttackedByPiece(self, board, coord, directions, pieces):
         # multiStep means that |pieces| can move multiple tiles in one move. All
         # except the King, Pawns and Knights are regarded as multistep.
-        multiStep = "r" in pieces or "b" in pieces or "q" in pieces
+        multiStep = any([p in pieces for p in "rbq"])
 
         for d in directions:
             tmp = (coord[0] + d[0], coord[1] + d[1])

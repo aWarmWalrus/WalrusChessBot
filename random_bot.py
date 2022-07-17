@@ -71,5 +71,6 @@ class Engine:
                 print("goodbye")
                 break
 
-engine = Engine()
-engine.run()
+if __name__ == "__main__":
+    engine = Engine()
+    engine.run()
