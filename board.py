@@ -19,6 +19,10 @@ def coordToAlgebraic(coord):
     """
     return colToFile(coord[1]) + str(8 - coord[0])
 
+def algebraicToCoord(algebraic):
+    colMap = {'a':0, 'b':1, 'c':2, 'd':3, 'e':4, 'f':5, 'g':6, 'h':7}
+    return (8 - int(algebraic[1]), colMap[algebraic[0]])
+
 def areEnemies(piece1, piece2):
     return piece1.isupper() != piece2.isupper()
 
@@ -32,10 +36,13 @@ def findPiece(piece, board):
                 return (r,c)
 
 class Array2DBoard:
-    def __init__(self, board = None, whiteToPlay = True, castles = ""):
+    def __init__(self, board = None, whiteToPlay = True, castles = "", enpassant = ""):
         """
         Params:
             castles: a 0-4 length string matching the FEN specs.
+            enpassant: a 2 length string of the algebraic square that a pawn
+                       is allowed to en passant on to, if any are. If not, then
+                       simply should be empty.
         """
         if board is None:
             self.board = [[" " for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
@@ -46,11 +53,11 @@ class Array2DBoard:
             self.board = board
         self.whiteToPlay = whiteToPlay
         self.castles = castles
+        self.enpassant = enpassant
 
     def isOpponentPiece(self, piece):
         return piece.isupper() != self.whiteToPlay
 
-    # TODO: handle castling logic.
     def setPositionWithFen(self, fen):
         fenArr = fen.split(" ")
         self.whiteToPlay = True if fenArr[1] == "w" else False
@@ -66,6 +73,7 @@ class Array2DBoard:
                     continue
                 self.board[r][c + empties] = rows[r][c]
         self.castles = fenArr[2]
+        self.enpassant = fenArr[3]
 
     def castleLogic(self, move, piece, board):
         newCastles = self.castles
@@ -103,17 +111,17 @@ class Array2DBoard:
         """
         assert(type(move) == str)
         assert(len(move) >= 4 and len(move) <= 5)
-        colMap = {'a':0, 'b':1, 'c':2, 'd':3, 'e':4, 'f':5, 'g':6, 'h':7}
 
         newBoard = deepcopy(self.board)
-        piece = newBoard[8-int(move[1])][colMap[move[0]]]
+        origin = algebraicToCoord(move[0:2])
+        piece = newBoard[origin[0]][origin[1]]
 
         # Right now, keep the legality checks simple and just trust in the GUI
         # to send us legal moves only.
         if piece == " " or piece.isupper() != self.whiteToPlay:
             print("Illegal move: " + move)
             self.prettyPrint()
-        newBoard[8-int(move[1])][colMap[move[0]]] = " "
+        newBoard[origin[0]][origin[1]] = " "
 
         newCastles = self.castleLogic(move, piece, newBoard)
 
@@ -124,10 +132,19 @@ class Array2DBoard:
             else:
                 piece = "Q" if self.whiteToPlay else "q"
 
-        # TODO: handle the following cases
-        #  - en passant
-        newBoard[8-int(move[3])][colMap[move[2]]] = piece
-        return Array2DBoard(newBoard, not self.whiteToPlay, newCastles)
+        # En passant logic
+        dest = algebraicToCoord(move[2:4])
+        if piece.lower() == "p" and move[2:4] == self.enpassant: # Capture
+            # captured piece is on same rank as origin, and same file as dest.
+            captured = algebraicToCoord(move[2] + move[1])
+            newBoard[captured[0]][captured[1]] = " "
+        newEnpassant = ""
+        if piece.lower() == "p" and move[1] in "27" and move[3] in "45":
+            epRank = "3" if self.whiteToPlay else "6"
+            newEnpassant = move[0] + epRank
+
+        newBoard[dest[0]][dest[1]] = piece
+        return Array2DBoard(newBoard, not self.whiteToPlay, newCastles, newEnpassant)
 
     def legalMovesForLinearMover(self, piece, coord, directions):
         moves = []
@@ -158,6 +175,10 @@ class Array2DBoard:
                     [moves.append(init + coordToAlgebraic(diag) + p) for p in "qrbn"]
                 else:
                     moves.append(init + coordToAlgebraic(diag))
+                continue
+            enPassant = coordToAlgebraic(diag)
+            if enPassant == self.enpassant:
+                moves.append(init + self.enpassant)
 
         # Single step forward logic
         oneStep = (coord[0] + forward, coord[1])
