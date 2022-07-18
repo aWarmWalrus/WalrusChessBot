@@ -1,3 +1,14 @@
+"""
+Implementation of a Chess board using a 267-length bitmap to store all the data
+about the chess board state.
+
+Benchmarks:
+
+Lenovo P1G4 (i7-11850H, 32GB RAM)
+  boardInitialization: 13.400900003034621µs
+  startposMoves(50): 0.3792362999993202ms
+  startposMoves(100): 0.7665094999974826ms
+"""
 
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 TEST_FEN = "r1b1k1nr/p2p1pNp/n1B5/1p1NPR1P/6P1/3P1Q2/P1P1K3/qR4b1 b KQkq - 1 2"
@@ -119,17 +130,20 @@ class BitBoard():
         rows = fenArr[0].split("/")
         pieceMap = {"p": PAWN, "r": ROOK, "b": BISHOP, "n": KNIGHT, "q": QUEEN, "k": KING}
         bits = 0
+        address = BOARD_START
         for r in range(len(rows)):
             empties = 0
             for c in range(len(rows[r])):
                 if rows[r][c].isdigit():   # Empty squares
-                    empties += int(rows[r][c]) - 1
+                    # empties += int(rows[r][c]) - 1
+                    address += PIECE_SIZE * int(rows[r][c])
                     continue
                 # Black = 0, White = 1
                 player = 0 if rows[r][c].islower() else 1
                 piece = (player << 3) | pieceMap[rows[r][c].lower()]
-                coord = (r, c + empties)
-                bits |= piece << BitBoard.coordToAddress(coord)
+                # coord = (r, c + empties)
+                bits |= piece << address
+                address += PIECE_SIZE
 
         # SIDE TO MOVE: 0 is black, 1 is white
         if fenArr[1] == "w":

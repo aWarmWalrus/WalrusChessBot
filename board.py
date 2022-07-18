@@ -3,9 +3,15 @@ Chess board implemented using a simple 2D array of strings. Very efficient. I
 know...
 
 Benchmarks:
+
     boardInitialization: 13.267600000000005µs
     startposMoves(50): 3.0164994ms
     startposMoves(100): 6.0557866ms
+
+Lenovo P1G4 (i7-11850H, 32GB RAM)
+  boardInitialization: 10.040400000434602µs
+  startposMoves(50): 2.1606331000002683ms
+  startposMoves(100): 4.414085200001864ms
 """
 from copy import deepcopy
 
@@ -45,7 +51,7 @@ def findPiece(piece, board):
                 return (r,c)
 
 class Array2DBoard:
-    def __init__(self, board = None, whiteToPlay = True, castles = "", enpassant = ""):
+    def __init__(self, board, whiteToPlay, castles, enpassant):
         """
         Params:
             castles: a 0-4 length string matching the FEN specs.
@@ -53,13 +59,10 @@ class Array2DBoard:
                        is allowed to en passant on to, if any are. If not, then
                        simply should be empty.
         """
-        if board is None:
-            self.board = [[" " for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
-        else:
-            assert(isinstance(board, list))
-            assert(len(board) == BOARD_SIZE)
-            assert(len(board[0]) == BOARD_SIZE)
-            self.board = board
+        assert(isinstance(board, list))
+        assert(len(board) == BOARD_SIZE)
+        assert(len(board[0]) == BOARD_SIZE)
+        self.board = board
         self.whiteToPlay = whiteToPlay
         self.castles = castles
         self.enpassant = enpassant
@@ -68,22 +71,23 @@ class Array2DBoard:
     def isOpponentPiece(self, piece):
         return piece.isupper() != self.whiteToPlay
 
-    def setPositionWithFen(self, fen):
+    def createFromFen(fen):
         fenArr = fen.split(" ")
-        self.whiteToPlay = True if fenArr[1] == "w" else False
-
+        whiteToPlay = True if fenArr[1] == "w" else False
+        board = [[" " for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
         rows = fenArr[0].split("/")
         for r in range(len(rows)):
             empties = 0
             for c in range(len(rows[r])):
                 if rows[r][c].isdigit():
                     for cp in range(int(rows[r][c])):
-                        self.board[r][c + empties + cp] = " "
+                        board[r][c + empties + cp] = " "
                     empties += int(rows[r][c]) - 1
                     continue
-                self.board[r][c + empties] = rows[r][c]
-        self.castles = fenArr[2]
-        self.enpassant = fenArr[3]
+                board[r][c + empties] = rows[r][c]
+        castles = fenArr[2]
+        enpassant = fenArr[3]
+        return Array2DBoard(board, whiteToPlay, castles, enpassant)
 
     def castleLogic(self, move, piece, board):
         newCastles = self.castles
