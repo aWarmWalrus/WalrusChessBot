@@ -11,9 +11,11 @@ QUEEN = 5
 KING = 6
 
 BOARD_SIZE = 8
+MAX_INDEX = 267
 PIECE_SIZE = 4  # 4 bits for piece. piece[3] is side, and piece[0:3] is the piece
 PIECE_MASK = 15 # 0b1111
 CASTLES_MASK = 15 # 0b1111
+ENPASSANT_MASK = 63 # 0b111111
 
 # BITMAP INDEXES
 BOARD_START = 11
@@ -22,7 +24,14 @@ CASTLES_START = 6
 
 # LOGICAL CONSTANTS, MAPS AND LISTS
 PIECE_MAP = {"r":ROOK, "b":BISHOP, "n":KNIGHT, "q":QUEEN}
+PIECE_STRING = " prbnqk"
 CASTLE_MOVES = {"e1g1":(7,7), "e8g8":(0,7), "e1c1":(7,0), "e8c8":(0,0)}
+ROOK_DIRS = [(-1,0),(1,0),(0,-1),(0,1)]
+BISHOP_DIRS = [(-1,-1),(-1,1),(1,-1),(1,1)]
+KNIGHT_DIRS = [(-2,-1),(-2,1),(2,-1),(2,1),(-1,-2),(-1,2),(1,-2),(1,2)]
+ROYAL_DIRS = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
+DIR_MAP= {ROOK: ROOK_DIRS, BISHOP: BISHOP_DIRS, QUEEN: ROYAL_DIRS, \
+            KNIGHT: KNIGHT_DIRS, KING: ROYAL_DIRS}
 
 class BitBoard():
     """
@@ -37,6 +46,7 @@ class BitBoard():
     def __init__(self, bits):
         assert(isinstance(bits, int))
         self._bits = bits
+        self.legalMoves = None
 
     """ ====================== Static helper methods ======================= """
     def coordToIndex(coord):
@@ -44,6 +54,10 @@ class BitBoard():
 
     def indexToCoord(index):
         return (int(index / BOARD_SIZE), index % BOARD_SIZE)
+
+    def indexToAlgebraic(index):
+        file = "abcdefgh"[index % BOARD_SIZE]
+        return file + str(8 - int(index / BOARD_SIZE))
 
     def algebraicToIndex(algebraic):
         row = 8 - int(algebraic[1])
@@ -53,9 +67,26 @@ class BitBoard():
     def algebraicToCoord(algebraic):
         return (8 - int(algebraic[1]), ord(algebraic[0]) - ord('a'))
 
+    # Also returns an outOfBounds bool if the addition would be out of bounds
+    # on a normal chess board.
+    def indexPlusCoord(index, coord):
+        ic = BitBoard.indexToCoord(index)
+        x = ic[0] + coord[0]
+        y = ic[1] + coord[1]
+        return (index + (coord[0] * BOARD_SIZE) + coord[1]), \
+                (x < 0 or x > 7 or y < 0 or y > 7)
+
+    # Basically only for en passant logic.
+    def algebraicToBits(algebraic):
+        return ((8 - int(algebraic[1])) << 3) + (ord(algebraic[0]) - ord('a'))
+
     def pieceAtAlgebraic(bits, algebraic):
         i = BitBoard.algebraicToIndex(algebraic[0:2])
         return (bits & (PIECE_MASK << i)) >> i
+
+    def getPiece(bits, index):
+        shift = BOARD_START + PIECE_SIZE * index
+        return (bits & (PIECE_MASK << shift)) >> shift
 
     def removePiece(bits, index):
         return bits & ~(PIECE_MASK << index)
@@ -70,6 +101,9 @@ class BitBoard():
 
     def pieceSide(piece):
         return (piece & 8) >> 3
+
+    def areEnemies(p1, p2):
+        return BitBoard.pieceSide(p1) != BitBoard.pieceSide(p2)
 
     def createFromFen(fenstring):
         fenArr = fenstring.split(" ")
@@ -127,10 +161,21 @@ class BitBoard():
         # 10 (SIDE_TO_MOVE_START) - 3 (PIECE BITS)
         return (self._bits & (1 << SIDE_TO_MOVE_START)) >> 7
 
+    def getEnpassant(self):
+        return self._bits & ENPASSANT_MASK
+
+    def getLegalMoves(self):
+        if self.legalMoves is None:
+            self.computeLegalMoves()
+        return self.legalMoves
+
     def isOpponentPiece(self, piece):
         """ Returns true if the piece is against the side to play. """
         isWhitePiece = (piece & 8) >> 3
         return isWhitePiece != self.whiteToMove()
+
+    def isCheckMate(self):
+        return False
 
     """ ============= Class methods ======================================== """
     def castleLogic(self, move, piece, bits):
@@ -141,7 +186,7 @@ class BitBoard():
                 rook = CASTLE_MOVES[move]
                 bits = BitBoard.removePiece(bits, BitBoard.coordToIndex(rook))
                 newFile = 5 if rook[1] == 7 else 3
-                rookDest = BitBoard.coordToIndex(rook[0], newFile)
+                rookDest = BitBoard.coordToIndex((rook[0], newFile))
                 bits = BitBoard.addPiece(bits, rookDest, ROOK | self.getSideToMove())
             # Even if not castling, moving king cancels all castle possibility.
             newCastles &= ~(0b11 << (0 if self.whiteToMove() else 2))
@@ -153,13 +198,13 @@ class BitBoard():
             newCastles &= ~(0b1 << shift)
 
         # If we just took on a starting rook square, remove opponent's castle possibility
-        # oppRank = "8" if self.whiteToPlay else "1"
-        # if move[3] == oppRank:
-        #     if move[2] == "h":
-        #         newCastles = newCastles.replace("k" if self.whiteToPlay else "K", "")
-        #     elif move[2] == "a":
-        #         newCastles = newCastles.replace("q" if self.whiteToPlay else "Q", "")
-        return newCastles
+        oppRank = "8" if self.whiteToMove() else "1"
+        if move[3] == oppRank:
+            shift = (0 if self.whiteToMove() else 2) + \
+                    (0 if move[2] == "h" else 1)
+            newCastles &= ~(0b1 << shift)
+        bits &= ((newCastles << CASTLES_START) | ~(CASTLES_MASK << CASTLES_START))
+        return bits
 
 
     def makeMove(self, move):
@@ -182,8 +227,7 @@ class BitBoard():
             # self.prettyPrint()
 
         newBits = BitBoard.removePiece(self._bits, origin)
-        newCastles = self.castleLogic(move, piece, newBits)
-        newBits &= ((newCastles << CASTLES_START) | ~(CASTLES_MASK << CASTLES_START))
+        newBits = self.castleLogic(move, piece, newBits)
 
         # Pawn promotion logic
         if BitBoard.pieceType(piece) == PAWN and move[3] in "18":
@@ -194,15 +238,18 @@ class BitBoard():
 
         # En passant logic
         dest = BitBoard.algebraicToIndex(move[2:4])
-        # if piece.lower() == "p" and move[2:4] == self.enpassant: # Capture
-        #     # captured piece is on same rank as origin, and same file as dest.
-        #     captured = algebraicToCoord(move[2] + move[1])
-        #     newBoard[captured[0]][captured[1]] = " "
-        # newEnpassant = ""
-        # if piece.lower() == "p" and move[1] in "27" and move[3] in "45":
-        #     epRank = "3" if self.whiteToPlay else "6"
-        #     newEnpassant = move[0] + epRank
-        #
+        destBits = BitBoard.algebraicToBits(move[2:4])
+        # En passant capture
+        if BitBoard.pieceType(piece) == PAWN and destBits == self.getEnpassant():
+            # captured piece is on same rank as origin, and same file as dest.
+            captured = BitBoard.algebraicToIndex(move[2] + move[1])
+            newBits = BitBoard.removePiece(newBits, captured)
+
+        newBits &= ~ENPASSANT_MASK
+        if BitBoard.pieceType(piece) == PAWN and move[1] in "27" and move[3] in "45":
+            epRank = "3" if self.whiteToMove() else "6"
+            newBits |= BitBoard.algebraicToBits(move[0] + epRank)
+
         newBits = BitBoard.addPiece(newBits, dest, piece)
 
         # Flip whose turn it is.
@@ -211,8 +258,114 @@ class BitBoard():
         return BitBoard(newBits)
 
 
+    """ ============== Legal Moves calculation ===================== """
+    def findPiece(self, piece):
+        shift = BOARD_START
+        while shift < MAX_INDEX:
+            if piece == ((self._bits & (PIECE_MASK << shift)) >> shift):
+                return int((shift - BOARD_START) / PIECE_SIZE)
+            shift += PIECE_SIZE
 
+    def legalMovesForNonPawns(self, piece, index, directions):
+        multiStep = PIECE_STRING[BitBoard.pieceType(piece)] in "rbq"
+        moves = []
+        src = BitBoard.indexToAlgebraic(index)
+        for d in directions:
+            tmp, outOfBounds = BitBoard.indexPlusCoord(index, d)
+            while multiStep and not outOfBounds \
+                    and BitBoard.getPiece(self._bits, tmp) == 0:
+                moves.append(src + BitBoard.indexToAlgebraic(tmp))
+                tmp, outOfBounds = BitBoard.indexPlusCoord(tmp, d)
+            if outOfBounds:
+                continue
+            dst = BitBoard.getPiece(self._bits, tmp)
+            if not multiStep and (dst == 0 or BitBoard.areEnemies(piece, dst)):
+                moves.append(src + BitBoard.indexToAlgebraic(tmp))
+                continue
+
+            if BitBoard.areEnemies(piece, BitBoard.getPiece(self._bits, tmp)):
+                moves.append(src + BitBoard.indexToAlgebraic(tmp))
+        return moves
+
+    def legalMovesForPiece(self, piece, index):
+        if piece == PAWN:
+            return []
+        return self.legalMovesForNonPawns(piece, index, \
+            DIR_MAP[BitBoard.pieceType(piece)])
+
+    def isSquareAttackedByPiece(self, index, target, directions, pieces):
+        multiStep = any([p in pieces for p in "rbq"])
+        for d in directions:
+            tmp, outOfBounds = BitBoard.indexPlusCoord(index, d)
+            while multiStep and not outOfBounds \
+                    and BitBoard.getPiece(self._bits, tmp) == 0:
+                tmp, outOfBounds = BitBoard.indexPlusCoord(tmp, d)
+            if outOfBounds:
+                continue
+            piece = BitBoard.getPiece(self._bits, tmp)
+            pieceStr = PIECE_STRING[BitBoard.pieceType(piece)]
+            if pieceStr in pieces and BitBoard.areEnemies(piece, target):
+                return True
+        return False
+
+    def isSquareAttacked(self, index):
+        directionals = [(KNIGHT_DIRS, "n"), (ROOK_DIRS, "rq"), \
+                        (BISHOP_DIRS, "bq"), (ROYAL_DIRS, "k")]
+        target = BitBoard.getPiece(self._bits, index)
+        if any([self.isSquareAttackedByPiece(index, target, dir, ps) \
+                for (dir, ps) in directionals]):
+            return True
+        # Pawn logic is special
+        forward = 1 if self.whiteToMove() else -1
+        diagonals = [(forward, 1), (forward, -1)]
+        for diag in diagonals:
+            tmp, outOfBounds = BitBoard.indexPlusCoord(index, diag)
+            if outOfBounds:
+                continue
+            piece = BitBoard.getPiece(self._bits, tmp)
+            if BitBoard.pieceType(piece) == PAWN and BitBoard.areEnemies(piece, target):
+                return True
+        return False
+
+    def isKingSafeAfterMove(self, move):
+        postMoveBoard = self.makeMove(move)
+        kingIndex = postMoveBoard.findPiece(self.getSideToMove() | KING)
+        print(move)
+        postMoveBoard.prettyPrint()
+        return not postMoveBoard.isSquareAttacked(kingIndex)
+
+    def computeLegalMoves(self):
+        if self.legalMoves is not None:
+            return self.legalMoves
+        moves = []
+        for i in range(BOARD_SIZE * BOARD_SIZE):
+            piece = BitBoard.getPiece(self._bits, i)
+            if piece == 0 or self.isOpponentPiece(piece):
+                continue
+            print(bin(piece))
+            moves += filter(self.isKingSafeAfterMove, \
+                        self.legalMovesForPiece(piece, i))
+        self.legalMoves = moves
+
+
+    """ ============== Debugging and Printing ===================== """
     def prettyPrint(self):
+        for i in range(BOARD_SIZE * BOARD_SIZE):
+            if i % BOARD_SIZE == 0:
+                print("|", end='')
+            bitmask = 15 << (i * PIECE_SIZE + BOARD_START)
+            pieceBits = (self._bits & bitmask) >> (i * PIECE_SIZE + BOARD_START)
+            piece = PIECE_STRING[pieceBits & 7]
+            whiteToPlay = pieceBits & 8
+            piece = piece.upper() if whiteToPlay else piece
+            if i % BOARD_SIZE != 0:
+                print(piece.rjust(2), end='')
+            else:
+                print(piece, end='')
+            if i % BOARD_SIZE == 7:
+                print("|")
+
+    def prettyPrintVerbose(self):
         print("PRETTY PRINT ==================")
         print("Board bits as int: {}".format(self._bits))
         binary = format(self._bits, '#0269b')
@@ -230,29 +383,20 @@ class BitBoard():
         print("  En Passant[0:6]: {}\n".format(binary[castles+4:castles+10]))
 
         print("Board (fancy): \n")
-        pieceStr = " prbnqk"
-        for i in range(BOARD_SIZE * BOARD_SIZE):
-            if i % BOARD_SIZE == 0:
-                print("|", end='')
-            bitmask = 15 << (i * PIECE_SIZE + BOARD_START)
-            pieceBits = (self._bits & bitmask) >> (i * PIECE_SIZE + BOARD_START)
-            piece = pieceStr[pieceBits & 7]
-            whiteToPlay = pieceBits & 8
-            piece = piece.upper() if whiteToPlay else piece
-            if i % BOARD_SIZE != 0:
-                print(piece.rjust(2), end='')
-            else:
-                print(piece, end='')
-            if i % BOARD_SIZE == 7:
-                print("|")
+        self.prettyPrint()
         print()
 
 if __name__ == "__main__":
     board = BitBoard.createFromFen(STARTING_FEN)
     board.prettyPrint()
-    board = board.makeMove("a1a4")
-    board.prettyPrint()
-    board = board.makeMove("a8a6")
-    board.prettyPrint()
-    board = board.makeMove("h1h4")
-    board.prettyPrint()
+    board = board.makeMove("e2e4")
+    board.prettyPrintVerbose()
+    board = board.makeMove("d7d5")
+    board.prettyPrintVerbose()
+    board = board.makeMove("e4e5")
+    board.prettyPrintVerbose()
+    board = board.makeMove("f7f5")
+    board.prettyPrintVerbose()
+    board = board.makeMove("e5f6")
+    board.prettyPrintVerbose()
+    print(BitBoard.indexToAlgebraic(63))

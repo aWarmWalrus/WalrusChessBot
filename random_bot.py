@@ -1,6 +1,7 @@
 import random
 from collections import defaultdict
 from board import Array2DBoard
+from bitboard import BitBoard
 
 ENGINE_NAME = "ARYA"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -13,7 +14,7 @@ KING_CHECK_WHITE = "3k4/8/8/8/8/3p4/8/3K4 w - - 1 2"
 class Engine:
     def __init__(self):
         self.options = defaultdict(str)
-        self.board = Array2DBoard()
+        self.board = BitBoard(0)
 
     def inputUCI(self):
         print("id name " + ENGINE_NAME)
@@ -34,7 +35,7 @@ class Engine:
         assert(words[0] == "position")
 
         if words[1] == "startpos":
-            self.board.setPositionWithFen(STARTING_FEN)
+            self.board = BitBoard.createFromFen(STARTING_FEN)
             if len(words) > 2 and words[2] == "moves":
                 for move in words[3:]:
                     self.board = self.board.makeMove(move)
@@ -69,7 +70,7 @@ class Engine:
                 self.go()
             elif line.startswith("print"):
                 self.board.prettyPrint()
-                print(self.board.legalMoves)
+                print(self.board.getLegalMoves())
             elif line.startswith("end") or line.startswith("quit"):
                 print("goodbye")
                 break
