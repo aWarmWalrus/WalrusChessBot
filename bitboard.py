@@ -215,9 +215,6 @@ class BitBoard():
         isWhitePiece = (piece & 8) >> 3
         return isWhitePiece != self.whiteToMove()
 
-    def isCheckMate(self):
-        return False
-
     """ ============= Class methods ======================================== """
     def castleLogic(self, move, piece, bits):
         newCastles = self.getCastles()
@@ -440,6 +437,12 @@ class BitBoard():
         king = self.sideToMove() | KING
         kingIndex = postMoveBoard.findPiece(king)
         return not postMoveBoard.isSquareAttacked(kingIndex, king)
+
+    # Only for if the active player's king is in check mate, since it can't be
+    # checkmate when it's not your turn.
+    def isCheckMate(self):
+        kingIndex = postMoveBoard.findPiece(self.sideToMove() | KING)
+        return len(self.getLegalMoves()) == 0 and self.isSquareAttacked(kingIndex)
 
     def computeLegalMoves(self):
         if self._legalMoves is not None:
