@@ -43,9 +43,12 @@ class Engine:
             print("weird " + words.join())
 
     def go(self):
-        moves = self.board.legalMoves()
-        if len(moves) == 0:
-            print("Game over boiiii")
+        moves = self.board.computeLegalMoves()
+        if self.board.isCheckMate():
+            print("CHECK MATED SON")
+            return
+        elif len(moves) == 0:
+            print("stale mate...??")
             return
         print("bestmove " + random.choice(moves))
 
@@ -66,7 +69,7 @@ class Engine:
                 self.go()
             elif line.startswith("print"):
                 self.board.prettyPrint()
-                print(self.board.legalMoves())
+                print(self.board.legalMoves)
             elif line.startswith("end") or line.startswith("quit"):
                 print("goodbye")
                 break

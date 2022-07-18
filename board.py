@@ -63,6 +63,7 @@ class Array2DBoard:
         self.whiteToPlay = whiteToPlay
         self.castles = castles
         self.enpassant = enpassant
+        self.legalMoves = None
 
     def isOpponentPiece(self, piece):
         return piece.isupper() != self.whiteToPlay
@@ -297,7 +298,9 @@ class Array2DBoard:
             moves.append(legalCastles[c])
         return moves
 
-    def legalMoves(self):
+    def computeLegalMoves(self):
+        if self.legalMoves is not None:
+            return self.legalMoves
         allPieces = []
         for r in range(len(self.board)):
             for c in range(len(self.board[r])):
@@ -313,8 +316,13 @@ class Array2DBoard:
             legalMoves += filter(self.isKingSafeAfterMove, \
                             self.legalMovesForPiece(piece, (r, c)))
         legalMoves += self.legalCastleMoves()
-
+        self.legalMoves = legalMoves
         return legalMoves
+
+    def isCheckMate(self):
+        king = "K" if self.whiteToPlay else "k"
+        return len(self.legalMoves) == 0 and \
+            self.isSquareAttacked(self.board, findPiece(king, self.board))
 
     def prettyPrint(self):
         print(" _ _ _ _ _ _ _ _")
