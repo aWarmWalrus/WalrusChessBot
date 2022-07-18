@@ -22,16 +22,18 @@ QUEEN = 5
 KING = 6
 
 BOARD_SIZE = 8
-MAX_INDEX = 267
+NUM_SQUARES = 64
+MAX_INDEX = 255
 PIECE_SIZE = 4  # 4 bits for piece. piece[3] is side, and piece[0:3] is the piece
 PIECE_MASK = 15 # 0b1111
 CASTLES_MASK = 15 # 0b1111
 ENPASSANT_MASK = 63 # 0b111111
 
 # BITMAP INDEXES
-BOARD_START = 11
-SIDE_TO_MOVE_START = 10
-CASTLES_START = 6
+BOARD_START = 0
+SIDE_TO_MOVE_START = 256
+CASTLES_START = 257
+ENPASSANT_START = 261
 
 # LOGICAL CONSTANTS, MAPS AND LISTS
 PIECE_MAP = {"r":ROOK, "b":BISHOP, "n":KNIGHT, "q":QUEEN}
@@ -51,18 +53,22 @@ class BitBoard():
     pieces, so we only need 3 bits, plus one bit to represent side.
 
     total: 267 bits
-    |  board (4x64=256 bits)  | side to move (1 bit) | castles (4 bits) | en passant (6 bits) |
-    |266. . . . . . . . . . 11|10                  10|9                6|5                   0|
+    |  en passant (6 bits)  | castles (4 bits) | side to move (1 bit) | board (4x64=256 bits) |
+    |266                 261|260            257|256                256|255                   0|
     """
     # TODO: move the board to the lowest bits to get rid of all the unnecessary shifts.
     def __init__(self, bits):
         assert(isinstance(bits, int))
         self._bits = bits
-        self.legalMoves = None
+        self._legalMoves = None
+        self._castles = None
+        self._whiteToMove = None
+        self._sideToMove = None
+        self._enpassant = None
 
     """ ====================== Static helper methods ======================= """
     def coordToAddress(coord):
-        return BOARD_START + PIECE_SIZE * (BOARD_SIZE * coord[0] + coord[1])
+        return PIECE_SIZE * (BOARD_SIZE * coord[0] + coord[1])
 
     def indexToCoord(index):
         return (int(index / BOARD_SIZE), index % BOARD_SIZE)
@@ -77,7 +83,7 @@ class BitBoard():
     def algebraicToAddress(algebraic):
         row = 8 - int(algebraic[1])
         col = ord(algebraic[0]) - ord('a')
-        return BOARD_START + PIECE_SIZE * (BOARD_SIZE * row + col)
+        return PIECE_SIZE * (BOARD_SIZE * row + col)
 
     def algebraicToCoord(algebraic):
         return (8 - int(algebraic[1]), ord(algebraic[0]) - ord('a'))
@@ -86,8 +92,10 @@ class BitBoard():
     # on a normal chess board.
     def indexPlusCoord(index, coord):
         result = index + (coord[0] * BOARD_SIZE) + coord[1]
+        if result < 0 or result > 63:
+            return -1, True
         col = (index % BOARD_SIZE) + coord[1]
-        return (result, (col < 0 or col > 7 or result < 0 or result > 63))
+        return result, (col < 0 or col > 7)
 
     # Basically only for en passant logic. Returns a 6 bit int, where the
     # higher 3 bits are for the row, and the lower 3 bits are for the col.
@@ -102,7 +110,7 @@ class BitBoard():
         return (bits & (PIECE_MASK << i)) >> i
 
     def getPiece(bits, index):
-        shift = BOARD_START + PIECE_SIZE * index
+        shift = PIECE_SIZE * index
         return (bits & (PIECE_MASK << shift)) >> shift
 
     def removePiece(bits, address):
@@ -141,7 +149,6 @@ class BitBoard():
                 # Black = 0, White = 1
                 player = 0 if rows[r][c].islower() else 1
                 piece = (player << 3) | pieceMap[rows[r][c].lower()]
-                # coord = (r, c + empties)
                 bits |= piece << address
                 address += PIECE_SIZE
 
@@ -166,30 +173,42 @@ class BitBoard():
         # EN PASSANT:
         #  | index (0-64, 6 bits) |
         if (fenArr[3] != "-"):
-            bits |= BitBoard.algebraicToIndex(fenArr[3])
+            bits |= BitBoard.algebraicToIndex(fenArr[3]) << ENPASSANT_START
 
         return BitBoard(bits)
 
     """ Getters """
     def getCastles(self):
-        return (self._bits & (CASTLES_MASK << CASTLES_START)) >> CASTLES_START
+        if self._castles is not None:
+            return self._castles
+        self._castles = (self._bits & (CASTLES_MASK << CASTLES_START)) >> CASTLES_START
+        return self._castles
 
     # This is more useful as syntactic sugar for if statements.
     def whiteToMove(self):
-        return (self._bits & (1 << SIDE_TO_MOVE_START)) >> SIDE_TO_MOVE_START
+        if self._whiteToMove is not None:
+            return self._whiteToMove
+        self._whiteToMove = (self._bits & (1 << SIDE_TO_MOVE_START)) >> SIDE_TO_MOVE_START
+        return self._whiteToMove
 
     # This is more useful when creating a piece.
-    def getSideToMove(self):
-        # 10 (SIDE_TO_MOVE_START) - 3 (PIECE BITS)
-        return (self._bits & (1 << SIDE_TO_MOVE_START)) >> 7
+    def sideToMove(self):
+        if self._sideToMove is not None:
+            return self._sideToMove
+        # 256 (SIDE_TO_MOVE_START) - 3 (PIECE BITS)
+        self._sideToMove = (self._bits & (1 << SIDE_TO_MOVE_START)) >> 253
+        return self._sideToMove
 
     def getEnpassant(self):
-        return self._bits & ENPASSANT_MASK
+        if self._enpassant is not None:
+            return self._enpassant
+        self._enpassant = (self._bits & (ENPASSANT_MASK << ENPASSANT_START)) >> ENPASSANT_START
+        return self._enpassant
 
     def getLegalMoves(self):
-        if self.legalMoves is None:
+        if self._legalMoves is None:
             self.computeLegalMoves()
-        return self.legalMoves
+        return self._legalMoves
 
     def isOpponentPiece(self, piece):
         """ Returns true if the piece is against the side to play. """
@@ -202,14 +221,13 @@ class BitBoard():
     """ ============= Class methods ======================================== """
     def castleLogic(self, move, piece, bits):
         newCastles = self.getCastles()
-        side = self.getSideToMove() << 3
         if BitBoard.pieceType(piece) == KING:
             if move in CASTLE_MOVES.keys():
                 rook = CASTLE_MOVES[move]
                 bits = BitBoard.removePiece(bits, BitBoard.coordToAddress(rook))
                 newFile = 5 if rook[1] == 7 else 3
                 rookDest = BitBoard.coordToAddress((rook[0], newFile))
-                bits = BitBoard.addPiece(bits, rookDest, ROOK | self.getSideToMove())
+                bits = BitBoard.addPiece(bits, rookDest, ROOK | self.sideToMove())
             # Even if not castling, moving king cancels all castle possibility.
             newCastles &= ~(0b11 << (0 if self.whiteToMove() else 2))
 
@@ -246,7 +264,6 @@ class BitBoard():
         # to send us legal moves only.
         if piece == 0 or self.isOpponentPiece(piece):
             print("Illegal move: " + move)
-            # self.prettyPrint()
 
         newBits = BitBoard.removePiece(self._bits, origin)
         newBits = self.castleLogic(move, piece, newBits)
@@ -254,22 +271,21 @@ class BitBoard():
         # Pawn promotion logic
         if BitBoard.pieceType(piece) == PAWN and move[3] in "18":
             if len(move) == 5:
-                piece = (PIECE_MAP[move[4]] | self.getSideToMove())
+                piece = (PIECE_MAP[move[4]] | self.sideToMove())
             else:
-                piece = (QUEEN | self.getSideToMove())
+                piece = (QUEEN | self.sideToMove())
 
         # En passant logic
         destIndex = BitBoard.algebraicToIndex(move[2:4])
-        # En passant capture
         if BitBoard.pieceType(piece) == PAWN and destIndex == self.getEnpassant():
             # captured piece is on same rank as origin, and same file as dest.
             captured = BitBoard.algebraicToAddress(move[2] + move[1])
             newBits = BitBoard.removePiece(newBits, captured)
 
-        newBits &= ~ENPASSANT_MASK
+        newBits &= ~(ENPASSANT_MASK << ENPASSANT_START)
         if BitBoard.pieceType(piece) == PAWN and move[1] in "27" and move[3] in "45":
             epRank = "3" if self.whiteToMove() else "6"
-            newBits |= BitBoard.algebraicToIndex(move[0] + epRank)
+            newBits |= BitBoard.algebraicToIndex(move[0] + epRank) << ENPASSANT_START
 
         newBits = BitBoard.addPiece(newBits, BitBoard.algebraicToAddress(move[2:4]), piece)
 
@@ -284,8 +300,9 @@ class BitBoard():
         shift = BOARD_START
         while shift < MAX_INDEX:
             if piece == ((self._bits & (PIECE_MASK << shift)) >> shift):
-                return int((shift - BOARD_START) / PIECE_SIZE)
+                return int(shift / PIECE_SIZE)
             shift += PIECE_SIZE
+        return Exception("Piece not found: " + bin(piece))
 
     def legalMovesForNonPawns(self, piece, index, directions):
         multiStep = PIECE_STRING[BitBoard.pieceType(piece)] in "rbq"
@@ -366,7 +383,7 @@ class BitBoard():
             isKingside = (shift == 0)
             # Check squares between king and rook
             emptyMask = 255 if isKingside else 4095
-            shift = BOARD_START + (56 * 4 if self.whiteToMove() else 0) \
+            shift = (56 * PIECE_SIZE if self.whiteToMove() else 0) \
                     + (20 if isKingside else 4)
             if (self._bits & (emptyMask << shift)) != 0:
                 continue
@@ -374,12 +391,11 @@ class BitBoard():
             # Check that all transit squares are not attacked
             transits = [2,3,4] if self.whiteToMove() else [4,5,6]
             row = 56 if self.whiteToMove() else 0
-            if any([self.isSquareAttacked(t + row, (self.getSideToMove() | KING)) \
+            if any([self.isSquareAttacked(t + row, (self.sideToMove() | KING)) \
                     for t in transits]):
                 continue
             moves.append(castleMap[castle])
         return moves
-
 
     def isSquareAttackedByPiece(self, index, target, directions, pieces):
         multiStep = any([p in pieces for p in "rbq"])
@@ -421,32 +437,30 @@ class BitBoard():
 
     def isKingSafeAfterMove(self, move):
         postMoveBoard = self.makeMove(move)
-        king = self.getSideToMove() | KING
+        king = self.sideToMove() | KING
         kingIndex = postMoveBoard.findPiece(king)
-        # print(move)
-        # postMoveBoard.prettyPrint()
         return not postMoveBoard.isSquareAttacked(kingIndex, king)
 
     def computeLegalMoves(self):
-        if self.legalMoves is not None:
-            return self.legalMoves
+        if self._legalMoves is not None:
+            return
         moves = []
-        for i in range(BOARD_SIZE * BOARD_SIZE):
+        for i in range(NUM_SQUARES):
             piece = BitBoard.getPiece(self._bits, i)
             if piece == 0 or self.isOpponentPiece(piece):
                 continue
             moves += filter(self.isKingSafeAfterMove, \
                         self.legalMovesForPiece(piece, i))
         moves += self.legalCastleMoves()
-        self.legalMoves = moves
+        self._legalMoves = moves
 
     """ ============== Debugging and Printing ===================== """
     def prettyPrint(self):
-        for i in range(BOARD_SIZE * BOARD_SIZE):
+        for i in range(NUM_SQUARES):
             if i % BOARD_SIZE == 0:
                 print("|", end='')
-            bitmask = 15 << (i * PIECE_SIZE + BOARD_START)
-            pieceBits = (self._bits & bitmask) >> (i * PIECE_SIZE + BOARD_START)
+            bitmask = 15 << (i * PIECE_SIZE)
+            pieceBits = (self._bits & bitmask) >> (i * PIECE_SIZE)
             piece = PIECE_STRING[pieceBits & 7]
             whiteToPlay = pieceBits & 8
             piece = piece.upper() if whiteToPlay else piece
@@ -462,31 +476,31 @@ class BitBoard():
         print("Board bits as int: {}".format(self._bits))
         binary = format(self._bits, '#0269b')
         print("Board bits binary: " + binary)
-        print("  Board [11:267]: (is reflected across x=y compared to normal board)")
         strStart = 2
-        for i in range(BOARD_SIZE):
-            start = strStart + i * PIECE_SIZE * BOARD_SIZE
-            end = strStart + (i + 1) * PIECE_SIZE * BOARD_SIZE
-            print("    {}".format(binary[start:end]))
-        side_to_play = strStart + (BOARD_SIZE * BOARD_SIZE * PIECE_SIZE)
-        print("  Side to move[10]: {}".format(binary[side_to_play]))
-        castles = side_to_play + 1
-        print("  Castles[6:10]: {}".format(binary[castles:castles+4]))
-        print("  En Passant[0:6]: {}\n".format(binary[castles+4:castles+10]))
+        print("  En Passant[261:266]: {}".format(binary[strStart:strStart + 6]))
 
-        print("Board (fancy): \n")
+        castles = strStart + 6
+        print("  Castles[257:261]:    {}".format(binary[castles:castles+4]))
+        print("  Side to move[256]:   {}".format(binary[castles+4]))
+        print("  Board [0:256]: (is reflected across y=-x compared to normal board)")
+        board = castles + 5
+        for i in range(BOARD_SIZE):
+            start = board + i * PIECE_SIZE * BOARD_SIZE
+            end = board + (i + 1) * PIECE_SIZE * BOARD_SIZE
+            print("    {}".format(binary[start:end]))
+        print("  Board (fancy):")
         self.prettyPrint()
         print()
 
 if __name__ == "__main__":
     board = BitBoard.createFromFen(STARTING_FEN)
-    board.prettyPrint()
-    board = board.makeMove("b1c3")
-    board = board.makeMove("b8f3")
-    board = board.makeMove("c1a3")
-    board = board.makeMove("c8a6")
-    board = board.makeMove("d1d3")
-    board = board.makeMove("d8d6")
+    # board.prettyPrint()
+    board = board.makeMove("e2e4")
+    board = board.makeMove("e7e5")
+    # board = board.makeMove("c1a3")
+    # board = board.makeMove("c8a6")
+    # board = board.makeMove("d1d3")
+    # board = board.makeMove("d8d6")
     board.prettyPrintVerbose()
     # board = board.makeMove("e5f6")
     # board.prettyPrintVerbose()
