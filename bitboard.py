@@ -220,6 +220,20 @@ class BitBoard():
         return isWhitePiece != self.whiteToMove()
 
     """ ============= Class methods ======================================== """
+    def activePieces(self):
+        whitePieces = []
+        blackPieces = []
+        for i in range(NUM_SQUARES):
+            address = i * PIECE_SIZE
+            piece = (self._bits & (PIECE_MASK << address)) >> address
+            if piece == 0:
+                continue
+            if (8 & piece) == 0:
+                blackPieces.append(BitBoard.pieceType(piece))
+                continue
+            whitePieces.append(BitBoard.pieceType(piece))
+        return (whitePieces, blackPieces)
+
     def castleLogic(self, move, piece, bits):
         newCastles = self.getCastles()
         if BitBoard.pieceType(piece) == KING:
@@ -443,7 +457,7 @@ class BitBoard():
     # Only for if the active player's king is in check mate, since it can't be
     # checkmate when it's not your turn.
     def isCheckMate(self):
-        kingIndex = postMoveBoard.findPiece(self.sideToMove() | KING)
+        kingIndex = self.findPiece(self.sideToMove() | KING)
         return len(self.getLegalMoves()) == 0 and self.isSquareAttacked(kingIndex)
 
     def computeLegalMoves(self):
@@ -499,14 +513,6 @@ class BitBoard():
 
 if __name__ == "__main__":
     board = BitBoard.createFromFen(STARTING_FEN)
-    # board.prettyPrint()
     board = board.makeMove("e2e4")
     board = board.makeMove("e7e5")
-    # board = board.makeMove("c1a3")
-    # board = board.makeMove("c8a6")
-    # board = board.makeMove("d1d3")
-    # board = board.makeMove("d8d6")
     board.prettyPrintVerbose()
-    # board = board.makeMove("e5f6")
-    # board.prettyPrintVerbose()
-    print(board.getLegalMoves())

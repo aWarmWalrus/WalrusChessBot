@@ -1,6 +1,5 @@
 import random
 from collections import defaultdict
-from board import Array2DBoard
 from bitboard import BitBoard
 
 ENGINE_NAME = "RANDOM"
