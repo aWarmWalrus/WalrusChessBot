@@ -15,7 +15,7 @@ Benchmarks:
     startposMoves(100): 0.7665094999974826ms
 """
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-TEST_FEN = "r1b1k1nr/p2p1pNp/n1B5/1p1NPR1P/6P1/3P1Q2/P1P1K3/qR4b1 b KQkq - 1 2"
+TEST_FEN = "rn2k3/2pp1pp1/2b1pn2/1BB5/P3P3/1PN2Q1r/2PP1P1P/R3K1NR w KQq - 0 15"
 
 EMPTY = 0
 PAWN = 1
@@ -244,7 +244,7 @@ class BitBoard():
                 rookDest = BitBoard.coordToAddress((rook[0], newFile))
                 bits = BitBoard.addPiece(bits, rookDest, ROOK | self.sideToMove())
             # Even if not castling, moving king cancels all castle possibility.
-            newCastles &= ~(0b11 << (0 if self.whiteToMove() else 2))
+            newCastles &= ~(0b11 << (2 if self.whiteToMove() else 0))
 
         # If our rook moves, remove that castle possibility
         if BitBoard.pieceType(piece) == ROOK:
@@ -278,6 +278,8 @@ class BitBoard():
         # Right now, keep the legality checks simple and just trust in the GUI
         # to send us legal moves only.
         if piece == 0 or self.isOpponentPiece(piece):
+            # self.prettyPrint()
+            self.prettyPrintVerbose()
             print("Illegal move: " + move)
 
         newBits = BitBoard.removePiece(self._bits, origin)
@@ -512,7 +514,11 @@ class BitBoard():
         print()
 
 if __name__ == "__main__":
-    board = BitBoard.createFromFen(STARTING_FEN)
-    board = board.makeMove("e2e4")
-    board = board.makeMove("e7e5")
+    board = BitBoard.createFromFen(TEST_FEN)
+    # board = board.makeMove("e2e4")
+    # board = board.makeMove("e7e5")
+    board.prettyPrintVerbose()
+    board = board.makeMove("f3f4")
+    board = board.makeMove("g7g6")
+    print(board.getLegalMoves())
     board.prettyPrintVerbose()

@@ -8,7 +8,7 @@ from threading import Thread
 
 ENGINE_NAME = "BAD_MINIMAX"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-TEST_FEN = "5k2/8/8/R7/2R3K1/8/8/8 w - - 0 1"
+TEST_FEN = "rn2k3/2pp1pp1/2b1pn2/1BB5/P3P3/1PN2Q1r/2PP1P1P/R3K1NR w KQq - 0 15"
 
 PIECE_VALUES = {bitboard.PAWN: 1,
                 bitboard.ROOK: 5,
@@ -64,14 +64,22 @@ class MiniMaxEngine:
         bests['moves'] = []
         searcher = Thread(target=self.search, args=(self._board,bests,), daemon=True)
         searcher.start()
-        searcher.join(timeout=10)
-        # if searcher.is_alive():
-        #     print("TIMED OUT")
+        searcher.join()
+        if searcher.is_alive():
+            print("TIMED OUT")
         # bestMove, score = self.search(self._board)
         if abs(bests['score']) == 100:
             print("Forced check mate found!!")
         # Getting a "list index out of range" error here sometimes..
         bestMoves = copy.copy(bests['moves'])
+        first = True
+        while len(bests['moves']) == 0:
+            if first:
+                print("haaaard time out")
+                first = False
+            pass
+        print(bestMoves)
+        print(bests['score'])
         print("bestmove " + random.choice(bestMoves))
 
     def run(self):
@@ -121,10 +129,11 @@ class MiniMaxEngine:
             newBoard = board.makeMove(move)
             _, score = self.search(newBoard, {}, depth + 1)
             if (board.whiteToMove() and (score > bestScore)) or \
-                    (not board.whiteToMove() and (score < bestScore)):
+                    ((not board.whiteToMove()) and (score < bestScore)):
                 # print("better score: " + str(score))
                 # newBoard.prettyPrint()
                 if depth == 0:
+                    print(str(depth) + ": move " + move + " score: " + str(score))
                     bests['score'] = score
                     bests['moves'] = [move]
                 bestScore = score
@@ -143,6 +152,7 @@ class MiniMaxEngine:
 if __name__ == "__main__":
     engine = MiniMaxEngine()
     # engine._board = BitBoard.createFromFen(TEST_FEN)
+    # engine.go()
     # print(sys.getsizeof(engine._board))
     #
     # print(engine.go())
