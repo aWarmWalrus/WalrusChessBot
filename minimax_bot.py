@@ -1,9 +1,12 @@
+import copy
+import sys
 import random
 import bitboard
 from bitboard import BitBoard
 from collections import defaultdict
+from threading import Thread
 
-ENGINE_NAME = "MINIMAX"
+ENGINE_NAME = "BAD_MINIMAX"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 TEST_FEN = "5k2/8/8/R7/2R3K1/8/8/8 w - - 0 1"
 
@@ -18,7 +21,8 @@ class MiniMaxEngine:
     def __init__(self):
         self._options = defaultdict(str)
         self._board = BitBoard(0)
-        self._maxDepth = 1 # in plies
+        self._maxDepth = 3 # in plies
+        self._table = {}
 
     def inputUCI(self):
         print("id name " + ENGINE_NAME)
@@ -32,7 +36,7 @@ class MiniMaxEngine:
         print("readyok")
 
     def newGame(self):
-        pass  # nothing to do
+        self._table = {}
 
     def position(self, line):
         words = line.split()
@@ -47,6 +51,7 @@ class MiniMaxEngine:
             print("weird " + words.join())
 
     def go(self):
+        self._bestMoves = []
         moves = self._board.getLegalMoves()
         if self._board.isCheckMate():
             print("CHECK MATED SON")
@@ -54,10 +59,20 @@ class MiniMaxEngine:
         elif len(moves) == 0:
             print("stale mate...??")
             return
-        bestMove, score = self.search(self._board)
-        if abs(score) == 100:
+        bests = {}
+        bests['score'] = -1000 if self._board.whiteToMove() else 1000
+        bests['moves'] = []
+        searcher = Thread(target=self.search, args=(self._board,bests,), daemon=True)
+        searcher.start()
+        searcher.join(timeout=10)
+        # if searcher.is_alive():
+        #     print("TIMED OUT")
+        # bestMove, score = self.search(self._board)
+        if abs(bests['score']) == 100:
             print("Forced check mate found!!")
-        print("bestmove " + bestMove)
+        # Getting a "list index out of range" error here sometimes..
+        bestMoves = copy.copy(bests['moves'])
+        print("bestmove " + random.choice(bestMoves))
 
     def run(self):
         while True:
@@ -90,7 +105,7 @@ class MiniMaxEngine:
         blackScore = sum([PIECE_VALUES[p] for p in blacks])
         return whiteScore - blackScore
 
-    def search(self, board, depth = 0):
+    def search(self, board, bests, depth = 0):
         if board.isCheckMate():
             return "", (-100 if board.whiteToMove() else 100)
         if len(board.getLegalMoves()) == 0:  # stalemate
@@ -104,24 +119,31 @@ class MiniMaxEngine:
         bestScore = -1000 if board.whiteToMove() else 1000
         for move in board.getLegalMoves():
             newBoard = board.makeMove(move)
-            _, score = self.search(newBoard, depth + 1)
+            _, score = self.search(newBoard, {}, depth + 1)
             if (board.whiteToMove() and (score > bestScore)) or \
                     (not board.whiteToMove() and (score < bestScore)):
                 # print("better score: " + str(score))
                 # newBoard.prettyPrint()
+                if depth == 0:
+                    bests['score'] = score
+                    bests['moves'] = [move]
                 bestScore = score
                 bestMoves = [move]
                 continue
             if score == bestScore:
                 # print("same score: " + str(score))
                 # newBoard.prettyPrint()
+                if depth == 0:
+                    bests['moves'].append(move)
                 bestMoves.append(move)
         # print(bestMoves)
-        return random.choice(bestMoves), bestScore
+        return _, bestScore
 
 
 if __name__ == "__main__":
     engine = MiniMaxEngine()
     # engine._board = BitBoard.createFromFen(TEST_FEN)
+    # print(sys.getsizeof(engine._board))
+    #
     # print(engine.go())
     engine.run()
