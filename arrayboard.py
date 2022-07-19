@@ -3,15 +3,16 @@ Chess board implemented using a simple 2D array of strings. Very efficient. I
 know...
 
 Benchmarks:
+ - PC (Ryzen 5 3600 @ 3.6 GHz, 16GB RAM)
+    boardInitialization: 12.857µs
+    startposMoves(50):    3.023ms
+    startposMoves(100):   6.035ms
+    computeLegalMoves():  5.236µs
 
-    boardInitialization: 13.267600000000005µs
-    startposMoves(50): 3.0164994ms
-    startposMoves(100): 6.0557866ms
-
-Lenovo P1G4 (i7-11850H, 32GB RAM)
-  boardInitialization: 10.040400000434602µs
-  startposMoves(50): 2.1606331000002683ms
-  startposMoves(100): 4.414085200001864ms
+ - Lenovo P1G4 (i7-11850H, 32GB RAM)
+    boardInitialization: 10.040400000434602µs
+    startposMoves(50): 2.1606331000002683ms
+    startposMoves(100): 4.414085200001864ms
 """
 from copy import deepcopy
 
@@ -50,7 +51,7 @@ def findPiece(piece, board):
             if board[r][c] == piece:
                 return (r,c)
 
-class Array2DBoard:
+class Array2DBoard():
     def __init__(self, board, whiteToPlay, castles, enpassant):
         """
         Params:
@@ -302,9 +303,15 @@ class Array2DBoard:
             moves.append(legalCastles[c])
         return moves
 
-    def computeLegalMoves(self):
+    def getLegalMoves(self):
         if self.legalMoves is not None:
             return self.legalMoves
+        self.computeLegalMoves()
+        return self.legalMoves
+
+    def computeLegalMoves(self):
+        if self.legalMoves is not None:
+            return
         allPieces = []
         for r in range(len(self.board)):
             for c in range(len(self.board[r])):
@@ -321,7 +328,6 @@ class Array2DBoard:
                             self.legalMovesForPiece(piece, (r, c)))
         legalMoves += self.legalCastleMoves()
         self.legalMoves = legalMoves
-        return legalMoves
 
     def isCheckMate(self):
         king = "K" if self.whiteToPlay else "k"

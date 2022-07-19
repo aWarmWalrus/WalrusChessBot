@@ -3,13 +3,17 @@ Implementation of a Chess board using a 267-length bitmap to store all the data
 about the chess board state.
 
 Benchmarks:
+ - PC (Ryzen 5 3600 @ 3.6 GHz, 16GB RAM)
+    boardInitialization: 15.895µs
+    startposMoves(50):    0.465ms
+    startposMoves(100):   0.933ms
+    computeLegalMoves():  3.800µs
 
-Lenovo P1G4 (i7-11850H, 32GB RAM)
-  boardInitialization: 13.400900003034621µs
-  startposMoves(50): 0.3792362999993202ms
-  startposMoves(100): 0.7665094999974826ms
+ - Lenovo P1G4 (i7-11850H, 32GB RAM)
+    boardInitialization: 13.400900003034621µs
+    startposMoves(50): 0.3792362999993202ms
+    startposMoves(100): 0.7665094999974826ms
 """
-
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 TEST_FEN = "r1b1k1nr/p2p1pNp/n1B5/1p1NPR1P/6P1/3P1Q2/P1P1K3/qR4b1 b KQkq - 1 2"
 
@@ -299,13 +303,11 @@ class BitBoard():
                 tmp, outOfBounds = BitBoard.indexPlusCoord(tmp, d)
             if outOfBounds:
                 continue
-            dst = BitBoard.getPiece(self._bits, tmp)
-            if not multiStep and (dst == 0 or BitBoard.areEnemies(piece, dst)):
+            dest = BitBoard.getPiece(self._bits, tmp)
+            if BitBoard.areEnemies(piece, dest) or \
+                    (not multiStep and dest == 0):
                 moves.append(src + BitBoard.indexToAlgebraic(tmp))
-                continue
 
-            if BitBoard.areEnemies(piece, BitBoard.getPiece(self._bits, tmp)):
-                moves.append(src + BitBoard.indexToAlgebraic(tmp))
         return moves
 
     def legalMovesForPawn(self, pawn, index):
@@ -429,7 +431,7 @@ class BitBoard():
 
     def computeLegalMoves(self):
         if self.legalMoves is not None:
-            return self.legalMoves
+            return
         moves = []
         for i in range(BOARD_SIZE * BOARD_SIZE):
             piece = BitBoard.getPiece(self._bits, i)

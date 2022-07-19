@@ -3,7 +3,7 @@ from collections import defaultdict
 from board import Array2DBoard
 from bitboard import BitBoard
 
-ENGINE_NAME = "ARYA"
+ENGINE_NAME = "RANDOM"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 TEST_FEN = "r1b1k1nr/p2p1pNp/n1B5/1p1NPR1P/6P1/3P1Q2/P1P1K3/qR4b1 b KQkq - 1 2"
 TEST2_FEN = "rnbqk2r/pppp1pp1/5n1p/1Bb1p3/4P2N/5P2/PPPP2PP/RNBQK2R b KQkq - 0 5"
@@ -39,12 +39,11 @@ class Engine:
             if len(words) > 2 and words[2] == "moves":
                 for move in words[3:]:
                     self.board = self.board.makeMove(move)
-                self.board.prettyPrint()
         else:
             print("weird " + words.join())
 
     def go(self):
-        moves = self.board.computeLegalMoves()
+        moves = self.board.getLegalMoves()
         if self.board.isCheckMate():
             print("CHECK MATED SON")
             return
