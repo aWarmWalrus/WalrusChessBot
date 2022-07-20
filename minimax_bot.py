@@ -63,21 +63,10 @@ class MiniMaxEngine:
         info = {}
         info['score'] = -1000 if self._board.whiteToMove() else 1000
         info['moves'] = []
-        searcher = Thread(target=self.search, args=(self._board,info,), daemon=True)
-        searcher.start()
-        searcher.join()
-        if searcher.is_alive():
-            print("TIMED OUT")
-        # bestMove, score = self.search(self._board)
-        if abs(info['score']) == 100:
+        nodes, score = self.search(self._board, info)
+        if abs(info['score']) == 10000:
             print("Forced check mate found!!")
         bestMoves = copy.copy(info['moves'])
-        first = True
-        while len(info['moves']) == 0:
-            if first:
-                print("haaaard time out")
-                first = False
-            pass
         print(bestMoves)
         print(info['score'])
         print("bestmove " + random.choice(bestMoves))
@@ -113,7 +102,7 @@ class MiniMaxEngine:
         blackScore = sum([PIECE_VALUES[p] for p in blacks])
         return whiteScore - blackScore
 
-    def search(self, board, info, depth = 0):
+    def search(self, board, info, depth = 0, moves = ""):
         if board.isCheckMate():
             return 1, (-10000 if board.whiteToMove() else 10000)
         if len(board.getLegalMoves()) == 0:  # stalemate
@@ -134,12 +123,10 @@ class MiniMaxEngine:
             if depth == 0:
                 print("info currmove {} currmovenumber {}".format(move, i))
             newBoard = board.makeMove(move)
-            newNodes, score = self.search(newBoard, {}, depth + 1)
+            newNodes, score = self.search(newBoard, {}, depth + 1, moves + move + " ")
             nodes += newNodes
             if (board.whiteToMove() and (score > bestScore)) or \
                     ((not board.whiteToMove()) and (score < bestScore)):
-                # print("better score: " + str(score))
-                # newBoard.prettyPrint()
                 if depth == 0:
                     print(str(depth) + ": move " + move + " score: " + str(score))
                     info['score'] = score
@@ -148,24 +135,17 @@ class MiniMaxEngine:
                 bestMoves = [move]
                 continue
             if score == bestScore:
-                # print("same score: " + str(score))
-                # newBoard.prettyPrint()
                 if depth == 0:
                     info['moves'].append(move)
                 bestMoves.append(move)
         if depth == 0:
             elapsedMs = int((time.time() - start) * 1000)
             print("info depth {} score cp {} time {} nodes {} pv {}".format( \
-                self._maxDepth, bestScore, elapsedMs, nodes, bestMoves[0]))
-        # print(bestMoves)
+                self._maxDepth, bestScore * (1 if board.whiteToMove() else -1), \
+                elapsedMs, nodes, bestMoves[0]))
         return nodes, bestScore
 
 
 if __name__ == "__main__":
     engine = MiniMaxEngine()
-    # engine._board = BitBoard.createFromFen(TEST_FEN)
-    # engine.go()
-    # print(sys.getsizeof(engine._board))
-    #
-    # print(engine.go())
     engine.run()

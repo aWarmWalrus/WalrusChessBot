@@ -268,9 +268,6 @@ class BitBoard():
         moved and its end location.
             <init file><init rank><dest file><dest rank>
         """
-        assert(type(move) == str)
-        assert(len(move) >= 4 and len(move) <= 5)
-
         newBits = 0
         origin = BitBoard.algebraicToAddress(move[0:2])
         piece = BitBoard.pieceAtAlgebraic(self._bits, move[0:2])
@@ -319,7 +316,7 @@ class BitBoard():
             if piece == ((self._bits & (PIECE_MASK << shift)) >> shift):
                 return int(shift / PIECE_SIZE)
             shift += PIECE_SIZE
-        return Exception("Piece not found: " + bin(piece))
+        raise Exception("Piece not found: " + bin(piece))
 
     def legalMovesForNonPawns(self, piece, index, directions):
         multiStep = PIECE_STRING[BitBoard.pieceType(piece)] in "rbq"
@@ -404,7 +401,7 @@ class BitBoard():
                 continue
 
             # Check that all transit squares are not attacked
-            transits = [2,3,4] if self.whiteToMove() else [4,5,6]
+            transits = [4,5,6] if isKingside else [2,3,4]
             row = 56 if self.whiteToMove() else 0
             if any([self.isSquareAttacked(t + row, (self.sideToMove() | KING)) \
                     for t in transits]):
@@ -453,14 +450,20 @@ class BitBoard():
     def isKingSafeAfterMove(self, move):
         postMoveBoard = self.makeMove(move)
         king = self.sideToMove() | KING
+
         kingIndex = postMoveBoard.findPiece(king)
         return not postMoveBoard.isSquareAttacked(kingIndex, king)
+
 
     # Only for if the active player's king is in check mate, since it can't be
     # checkmate when it's not your turn.
     def isCheckMate(self):
+        # try:
         kingIndex = self.findPiece(self.sideToMove() | KING)
         return len(self.getLegalMoves()) == 0 and self.isSquareAttacked(kingIndex)
+        # except:
+        #     self.prettyPrintVerbose()
+        #     return True
 
     def computeLegalMoves(self):
         if self._legalMoves is not None:
@@ -514,11 +517,8 @@ class BitBoard():
         print()
 
 if __name__ == "__main__":
-    board = BitBoard.createFromFen(TEST_FEN)
-    # board = board.makeMove("e2e4")
-    # board = board.makeMove("e7e5")
+    board = BitBoard.createFromFen(STARTING_FEN)
+    for move in moves.split():
+        board = board.makeMove(move)
     board.prettyPrintVerbose()
-    board = board.makeMove("f3f4")
-    board = board.makeMove("g7g6")
     print(board.getLegalMoves())
-    board.prettyPrintVerbose()
