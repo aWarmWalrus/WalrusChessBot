@@ -12,7 +12,8 @@ ENGINE_NAME = "ALPHA_BETA"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 TEST_FEN = "rn2k3/2pp1pp1/2b1pn2/1BB5/P3P3/1PN2Q1r/2PP1P1P/R3K1NR w KQq - 0 15"
 ALIREZA = "books/lichess_alireza.alg"
-DEBUG = False
+DEBUG = True
+USE_BOOK = False
 
 PIECE_VALUES = {bitboard.PAWN:   100,
                 bitboard.KNIGHT: 320,
@@ -24,7 +25,7 @@ PAWN_VALUES = [0,  0,  0,  0,  0,  0,  0,  0, \
               50, 50, 50, 50, 50, 50, 50, 50, \
               10, 10, 20, 30, 30, 20, 10, 10, \
                5,  5, 10, 25, 25, 10,  5,  5, \
-               0,  0,  0, 20, 20,  0,  0,  0, \
+               5,  0,  0, 20, 20,  0,  0,  5, \
                5, -5,-10,  0,  0,-10, -5,  5, \
                5, 10, 10,-20,-20, 10, 10,  5, \
                0,  0,  0,  0,  0,  0,  0,  0]
@@ -159,10 +160,11 @@ class AlphaBetaEngine:
             print("weird " + words.join())
 
     def go(self, args):
-        bookMove = self.consultBook()
-        if bookMove is not None:
-            print("bestmove " + bookMove)
-            return
+        if USE_BOOK:
+            bookMove = self.consultBook()
+            if bookMove is not None:
+                print("bestmove " + bookMove)
+                return
 
         # Time management
         self._maxDepth = 4
