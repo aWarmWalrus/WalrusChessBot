@@ -147,20 +147,21 @@ class AlphaBetaEngine:
             if args[1] == "infinite":
                 self._maxDepth = 4
             elif args[1] == "wtime":
-                whiteTime = args[2]
-                blackTime = args[4]
-                usTime = whiteTime if self._bord.whiteToMove() else blackTime
-                opTime = blackTime if self._bord.whiteToMove() else whiteTime
-                if whiteTime < 300000:
+                whiteTime = int(args[2])
+                blackTime = int(args[4])
+                usTime = whiteTime if self._board.whiteToMove() else blackTime
+                opTime = blackTime if self._board.whiteToMove() else whiteTime
+                if usTime < 300000:
                     self._maxDepth = 4
-                elif whiteTime >= blackTime * 1.5:
+                elif usTime >= opTime * 1.5:
                     self._maxDepth = 6
-                elif whiteTime >= blackTime * 1.2:
+                elif usTime >= opTime * 1.2:
                     self._maxDepth = 5
 
         self._bestMoves = []
         moves = self._board.getLegalMoves()
         if len(moves) < 5:
+            print("< 5 moves: {}".format(moves))
             self._maxDepth += 1
         print("DEBUG: searching max depth " + str(self._maxDepth))
 
