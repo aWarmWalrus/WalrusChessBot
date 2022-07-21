@@ -6,6 +6,7 @@ import time
 from bitboard import BitBoard
 from collections import defaultdict
 from threading import Thread
+from openings import OpeningTree
 
 ENGINE_NAME = "ALPHA_BETA"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -24,7 +25,7 @@ class AlphaBetaEngine:
     def __init__(self):
         self._options = defaultdict(str)
         self._board = BitBoard(0)
-        self._maxDepth = 3 # in plies
+        self._maxDepth = 4 # in plies
         self._table = {}
         self._moves = 0
         try:
@@ -73,7 +74,7 @@ class AlphaBetaEngine:
                     if self._bookMoves is None:
                         continue
                     if move in self._bookMoves.getChildren():
-                        self._bookMoves = self._bookmoves.getChild(move)
+                        self._bookMoves = self._bookMoves.getChild(move)
                         if DEBUG:
                             self.printBookMoves()
                     else:
@@ -82,7 +83,6 @@ class AlphaBetaEngine:
             print("weird " + words.join())
 
     def go(self):
-
         bookMove = self.consultBook()
         if bookMove is not None:
             print("bestmove " + bookMove)
@@ -97,11 +97,10 @@ class AlphaBetaEngine:
             print("stale mate...??")
             return
         info = {}
-        info['score'] = -1000 if self._board.whiteToMove() else 1000
         info['move'] = ""
+        # searcher = Thread(target = self.search, args = (self._board, info,), daemon=True)
+        # searcher.start()
         nodes, score = self.search(self._board, info)
-        # print(bestMoves)
-        # print(info['score'])
         print("bestmove " + info['move'])
 
     def run(self):
@@ -128,7 +127,7 @@ class AlphaBetaEngine:
 
     """ =============== Alpha Beta implementation ====================="""
     def consultBook(self):
-        if self._bookMoves is not None:
+        if self._bookMoves is not None and self._moves < 12:
             children = self._bookMoves.getChildren()
             values = [c.getCount() for c in children.values()]
             return random.choices(list(children.keys()), values)[0]
@@ -142,48 +141,63 @@ class AlphaBetaEngine:
         blackScore = sum([PIECE_VALUES[p] for p in blacks])
         return whiteScore - blackScore
 
-    def search(self, board, info, alpha = -1000000, beta = 1000000, depth = 0):
+    def search(self, board, info, moves = "", alpha = -1000000, beta = 1000000, depth = 0):
         if board.isCheckMate():
             return 1, (-10000 if board.whiteToMove() else 10000)
         if len(board.getLegalMoves()) == 0:  # stalemate
             return 1, 0
         if depth == self._maxDepth:
-            score = MiniMaxEngine.evaluatePosition(board)
+            score = AlphaBetaEngine.evaluatePosition(board)
             return 1, score
 
         # best move for the active player.
         bestMoves = []
-        bestScore = -10000 if board.whiteToMove() else 10000
+        bestScore = -1000000 if board.whiteToMove() else 1000000
         i = 0
         nodes = 0
         if depth == 0:
             start = time.time()
-        for move in board.getLegalMoves():
+        legalMoves = board.getLegalMoves()
+        for move in legalMoves:
             i += 1
             if depth == 0:
-                print("info currmove {} currmovenumber {}".format(move, i))
+                print("info currmove {} currmovenumber {}".format(move, i), flush=True)
             newBoard = board.makeMove(move)
-            newNodes, score = self.search(newBoard, {}, alpha, beta, depth + 1)
+            path = moves + " " + move
+            newNodes, score = self.search(newBoard, {}, path, \
+                alpha, beta, depth + 1)
             nodes += newNodes
 
-            if (board.whiteToMove() and (score > bestScore)) or \
-                    ((not board.whiteToMove()) and (score < bestScore)):
-                if depth == 0:
-                    print(str(depth) + ": move " + move + " score: " + str(score))
-                    info['score'] = score
-                    info['moves'] = [move]
+            if board.whiteToMove() and (score > bestScore):
                 bestScore = score
                 bestMoves = [move]
-                continue
+                alpha = score
+                if DEBUG:
+                    print("info depth {} score cp {} nodes {} pv {}".format( \
+                        self._maxDepth, bestScore * (1 if board.whiteToMove() else -1), \
+                        nodes, path), flush=True)
+            elif not board.whiteToMove() and (score < bestScore):
+                bestScore = score
+                bestMoves = [move]
+                beta = score
+                if DEBUG:
+                    print("info depth {} score cp {} nodes {} pv {}".format( \
+                        self._maxDepth, bestScore * (1 if board.whiteToMove() else -1), \
+                        nodes, path), flush=True)
             if score == bestScore:
-                if depth == 0:
-                    info['moves'].append(move)
                 bestMoves.append(move)
+            if alpha > beta:
+                if DEBUG:
+                    print("{}({}): alpha {} > beta {}: pruning {} other branches".format(\
+                        "WHITE" if board.whiteToMove() else "BLACK", \
+                        depth, alpha, beta, len(legalMoves) - i))
+                break
         if depth == 0:
+            info['move'] = random.choice(bestMoves)
             elapsedMs = int((time.time() - start) * 1000)
             print("info depth {} score cp {} time {} nodes {} pv {}".format( \
                 self._maxDepth, bestScore * (1 if board.whiteToMove() else -1), \
-                elapsedMs, nodes, bestMoves[0]))
+                elapsedMs, nodes, info['move']), flush=True)
         return nodes, bestScore
 
 

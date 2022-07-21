@@ -50,6 +50,12 @@ ROYAL_DIRS = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
 DIR_MAP= {ROOK: ROOK_DIRS, BISHOP: BISHOP_DIRS, QUEEN: ROYAL_DIRS, \
             KNIGHT: KNIGHT_DIRS, KING: ROYAL_DIRS}
 
+# MOVE METADATA
+CAPTURE      = 0b00001
+CHECK        = 0b00010
+PROMOTION    = 0b00100
+PROMOTION    = 0b01000
+
 class BitBoard():
     """
     The paper said we need 768 bits? 2 x 6 x 64
@@ -147,7 +153,6 @@ class BitBoard():
             empties = 0
             for c in range(len(rows[r])):
                 if rows[r][c].isdigit():   # Empty squares
-                    # empties += int(rows[r][c]) - 1
                     address += PIECE_SIZE * int(rows[r][c])
                     continue
                 # Black = 0, White = 1
@@ -326,15 +331,16 @@ class BitBoard():
             tmp, outOfBounds = BitBoard.indexPlusCoord(index, d)
             while multiStep and not outOfBounds \
                     and BitBoard.getPiece(self._bits, tmp) == 0:
-                moves.append(src + BitBoard.indexToAlgebraic(tmp))
+                moves.append((src + BitBoard.indexToAlgebraic(tmp), 0))
                 tmp, outOfBounds = BitBoard.indexPlusCoord(tmp, d)
             if outOfBounds:
                 continue
             dest = BitBoard.getPiece(self._bits, tmp)
-            if BitBoard.areEnemies(piece, dest) or \
-                    (not multiStep and dest == 0):
-                moves.append(src + BitBoard.indexToAlgebraic(tmp))
-
+            if BitBoard.areEnemies(piece, dest) and dest != 0:
+                moves.append((src + BitBoard.indexToAlgebraic(tmp), 1))
+                continue
+            if (not multiStep and dest == 0):
+                moves.append((src + BitBoard.indexToAlgebraic(tmp), 0))
         return moves
 
     def legalMovesForPawn(self, pawn, index):
@@ -350,28 +356,30 @@ class BitBoard():
             piece = BitBoard.getPiece(self._bits, tmp)
             if piece != 0 and BitBoard.areEnemies(pawn, piece):
                 if BitBoard.isBackRank(tmp):
-                    [moves.append(src + BitBoard.indexToAlgebraic(tmp) + p) for p in "qrbn"]
+                    [moves.append((src + BitBoard.indexToAlgebraic(tmp) + p, 1)) \
+                        for p in "qrbn"]
                     continue
-                moves.append(src + BitBoard.indexToAlgebraic(tmp))
+                moves.append((src + BitBoard.indexToAlgebraic(tmp), 1))
                 continue
             if self.getEnpassant() > 0 and tmp == self.getEnpassant():
-                moves.append(src + BitBoard.indexToAlgebraic(tmp))
+                moves.append((src + BitBoard.indexToAlgebraic(tmp), 1))
 
         # Pawn advance logic
         tmp, outOfBounds = BitBoard.indexPlusCoord(index, (forward, 0))
         if outOfBounds or BitBoard.getPiece(self._bits, tmp) != 0:
             return moves
         if BitBoard.isBackRank(tmp):
-            [moves.append(src + BitBoard.indexToAlgebraic(tmp) + p) for p in "qrbn"]
+            [moves.append((src + BitBoard.indexToAlgebraic(tmp) + p, 0)) \
+                for p in "qrbn"]
         else:
-            moves.append(src + BitBoard.indexToAlgebraic(tmp))
+            moves.append((src + BitBoard.indexToAlgebraic(tmp), 0))
 
         # Pawn double advance logic
         if int(index / BOARD_SIZE) != (6 if self.whiteToMove() else 1):
             return moves
         double = index + (2 * BOARD_SIZE * forward)
         if BitBoard.getPiece(self._bits, double) == 0:
-            moves.append(src + BitBoard.indexToAlgebraic(double))
+            moves.append((src + BitBoard.indexToAlgebraic(double), 0))
 
         return moves
 
@@ -406,7 +414,7 @@ class BitBoard():
             if any([self.isSquareAttacked(t + row, (self.sideToMove() | KING)) \
                     for t in transits]):
                 continue
-            moves.append(castleMap[castle])
+            moves.append((castleMap[castle], 0))
         return moves
 
     def isSquareAttackedByPiece(self, index, target, directions, pieces):
@@ -448,7 +456,7 @@ class BitBoard():
         return False
 
     def isKingSafeAfterMove(self, move):
-        postMoveBoard = self.makeMove(move)
+        postMoveBoard = self.makeMove(move[0])
         king = self.sideToMove() | KING
 
         kingIndex = postMoveBoard.findPiece(king)
@@ -475,7 +483,8 @@ class BitBoard():
             moves += filter(self.isKingSafeAfterMove, \
                         self.legalMovesForPiece(piece, i))
         moves += self.legalCastleMoves()
-        self._legalMoves = moves
+        moves.sort(key = (lambda m: m[1]), reverse=True)
+        self._legalMoves = [m[0] for m in moves]
 
     """ ============== Debugging and Printing ===================== """
     def prettyPrint(self):
@@ -516,8 +525,8 @@ class BitBoard():
         print()
 
 if __name__ == "__main__":
-    board = BitBoard.createFromFen(STARTING_FEN)
-    for move in moves.split():
-        board = board.makeMove(move)
+    board = BitBoard.createFromFen(TEST_FEN)
+    # for move in moves.split():
+    #     board = board.makeMove(move)
     board.prettyPrintVerbose()
     print(board.getLegalMoves())
