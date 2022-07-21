@@ -79,7 +79,7 @@ class AlphaBetaEngine:
     def __init__(self):
         self._options = defaultdict(str)
         self._board = BitBoard(0)
-        self._maxDepth = 4 # in plies
+        self._maxDepth = 5 # in plies
         self._table = {}
         self._moves = 0
         try:
@@ -136,14 +136,34 @@ class AlphaBetaEngine:
         else:
             print("weird " + words.join())
 
-    def go(self):
+    def go(self, args):
         bookMove = self.consultBook()
         if bookMove is not None:
             print("bestmove " + bookMove)
             return
 
+        # Time management
+        if len(args) > 1:
+            if args[1] == "infinite":
+                self._maxDepth = 4
+            elif args[1] == "wtime":
+                whiteTime = args[2]
+                blackTime = args[4]
+                usTime = whiteTime if self._bord.whiteToMove() else blackTime
+                opTime = blackTime if self._bord.whiteToMove() else whiteTime
+                if whiteTime < 300000:
+                    self._maxDepth = 4
+                elif whiteTime >= blackTime * 1.5:
+                    self._maxDepth = 6
+                elif whiteTime >= blackTime * 1.2:
+                    self._maxDepth = 5
+
         self._bestMoves = []
         moves = self._board.getLegalMoves()
+        if len(moves) < 5:
+            self._maxDepth += 1
+        print("DEBUG: searching max depth " + str(self._maxDepth))
+
         if self._board.isCheckMate():
             print("CHECK MATED SON")
             return
@@ -171,7 +191,7 @@ class AlphaBetaEngine:
             elif line.startswith("position"):
                 self.position(line)
             elif line.startswith("go"):
-                self.go()
+                self.go(line.split())
             elif line.startswith("print"):
                 self._board.prettyPrint()
                 print(self._board.getLegalMoves())
