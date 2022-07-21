@@ -68,12 +68,34 @@ KING_VALUES = [-30,-40,-40,-50,-50,-40,-40,-30,
                 -10,-20,-20,-20,-20,-20,-20,-10,
                  20, 20,  0,  0,  0,  0, 20, 20,
                  20, 30, 10,  0,  0, 10, 30, 20]
+KING_ENDGAME = [-50,-40,-30,-20,-20,-30,-40,-50,
+                -30,-20,-10,  0,  0,-10,-20,-30,
+                -30,-10, 20, 30, 30, 20,-10,-30,
+                -30,-10, 30, 40, 40, 30,-10,-30,
+                -30,-10, 30, 40, 40, 30,-10,-30,
+                -30,-10, 20, 30, 30, 20,-10,-30,
+                -30,-30,  0,  0,  0,  0,-30,-30,
+                -50,-30,-30,-30,-30,-30,-30,-50]
+PAWN_ENDGAME = [0,  0,  0,  0,  0,  0,  0,  0, \
+              50, 50, 50, 50, 50, 50, 50, 50, \
+              40, 40, 40, 40, 40, 40, 40, 40, \
+              30, 30, 30, 30, 30, 30, 30, 30, \
+              20, 20, 20, 20, 20, 20, 20, 20, \
+              10, 10, 10, 10, 10, 10, 10, 10, \
+               0,  0,  0,  0,  0,  0,  0,  0, \
+               0,  0,  0,  0,  0,  0,  0,  0]
 EVAL_TABLES = {bitboard.PAWN:   PAWN_VALUES,
                bitboard.KNIGHT: KNIGHT_VALUES,
                bitboard.BISHOP: BISHOP_VALUES,
                bitboard.ROOK:   ROOK_VALUES,
                bitboard.QUEEN:  QUEEN_VALUES,
                bitboard.KING:   KING_VALUES}
+ENDGAME_TABLE = {bitboard.PAWN: PAWN_ENDGAME,
+               bitboard.KNIGHT: KNIGHT_VALUES,
+               bitboard.BISHOP: BISHOP_VALUES,
+               bitboard.ROOK:   ROOK_VALUES,
+               bitboard.QUEEN:  QUEEN_VALUES,
+               bitboard.KING:   KING_ENDGAME}
 
 class AlphaBetaEngine:
     def __init__(self):
@@ -143,6 +165,7 @@ class AlphaBetaEngine:
             return
 
         # Time management
+        self._maxDepth = 4
         if len(args) > 1:
             if args[1] == "infinite":
                 self._maxDepth = 4
@@ -210,11 +233,15 @@ class AlphaBetaEngine:
     def evaluatePosition(board):
         if board.isCheckMate():
             return -100000 if board.whiteToMove() else 100000
+        numMinors = 0
         whites, blacks = board.activePieces()
+        isEndgame = (len(whites) + len(blacks)) < 14
+        evalTable = ENDGAME_TABLE if isEndgame else EVAL_TABLES
+
         whiteScore = 0
         for piece, index in whites:
             whiteScore += PIECE_VALUES[piece]
-            whiteScore += EVAL_TABLES[piece][index]
+            whiteScore += evalTable[piece][index]
 
         blackScore = 0
         for piece, index in blacks:
@@ -228,10 +255,9 @@ class AlphaBetaEngine:
             # b4 (33) => b5 (25)
             col = index % 8
             bi = 56 - (index - col) + col
-
             # print("{}, {} = {}".format(bin(piece), bi, EVAL_TABLES[piece][bi]))
             blackScore += PIECE_VALUES[piece]
-            blackScore += EVAL_TABLES[piece][bi]
+            blackScore += evalTable[piece][bi]
         # print("WHITE: {}    BLACK: {}    total: {}".format(whiteScore, blackScore, whiteScore-blackScore))
         # whiteScore = sum([PIECE_VALUES[p] for piece, index in whites])
         # blackScore = sum([PIECE_VALUES[p] for p in blacks])
