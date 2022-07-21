@@ -9,9 +9,9 @@ PIECE_MAP = {"P": PAWN, \
             "B": BISHOP, \
             "Q": QUEEN, \
             "K": KING}
+alirezaPgn = "books/lichess_alireza2003_2022-07-20.pgn"
 
 def convertPgnToAlgebraic(line):
-    newFile = open("lichess_alireza.pgn", "a")
     board = BitBoard.createFromFen(STARTING_FEN)
     algebraic = []
     for omove in line.split():
@@ -93,22 +93,28 @@ def convertPgnToAlgebraic(line):
         print("Not enough possibilities")
         print("algebraic so far: ", algebraic)
         board.prettyPrint()
-        # TODO: Handle pawn promotion...
         raise Exception("POOPOO {}:  legals {}  white to play? {}".format(\
             move, list(filter((lambda lm : lm[-2:0] == dest), legalMoves)), board.whiteToMove()))
     return algebraic
+
+def generateAlgFile(file):
+    f = open(file)
+    newF = open("books/lichess_alireza.pgn", "w")
+    for l in f:
+        if not l.startswith("1"):
+            continue
+        moves = convertPgnToAlgebraic(l)
+        newF.write(" ".join(moves))
+        newF.write("\n")
 
 class OpeningTree:
     def generateFromFile(file):
         f = open(file)
         openingBook = OpeningTree(None, "")
-        for l in f:
-            if not l.startswith("1"):
-                continue
-            moves = convertPgnToAlgebraic(l)
+        for line in f:
             # print(moves)
             child = openingBook
-            for move in moves:
+            for move in line.split():
                 # if move[0].isdigit():
                 #     continue
                 child = child.getChild(move)
@@ -126,6 +132,12 @@ class OpeningTree:
     def getMove(self):
         return self._move
 
+    def getChildren(self):
+        return self._children
+
+    def getCount(self):
+        return self._counter
+
     def getChild(self, move):
         if move in self._children:
             child = self._children[move]
@@ -137,13 +149,8 @@ class OpeningTree:
 
 
 if __name__ == "__main__":
-    f = open("books/lichess_alireza2003_2022-07-20.pgn")
-    newF = open("books/lichess_alireza.pgn", "w")
-    for l in f:
-        if not l.startswith("1"):
-            continue
-        moves = convertPgnToAlgebraic(l)
-        newF.write(" ".join(moves))
-        newF.write("\n")
     # filename = sys.argv[1]
-    # tree = OpeningTree.generateFromFile("books/test.pgn")
+    tree = OpeningTree.generateFromFile("books/lichess_alireza.alg")
+    d4 = tree.getChildren()["d2d4"]
+    for c in d4.getChildren():
+        print("{} {}".format(c, d4.getChildren()[c].getCount()))

@@ -10,6 +10,8 @@ from threading import Thread
 ENGINE_NAME = "ALPHA_BETA"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 TEST_FEN = "rn2k3/2pp1pp1/2b1pn2/1BB5/P3P3/1PN2Q1r/2PP1P1P/R3K1NR w KQq - 0 15"
+ALIREZA = "books/lichess_alireza.alg"
+DEBUG = False
 
 PIECE_VALUES = {bitboard.PAWN: 100,
                 bitboard.ROOK: 500,
@@ -24,6 +26,11 @@ class AlphaBetaEngine:
         self._board = BitBoard(0)
         self._maxDepth = 3 # in plies
         self._table = {}
+        self._moves = 0
+        try:
+            self._openings = OpeningTree.generateFromFile(ALIREZA)
+        except FileNotFoundError:
+            self._openings = OpeningTree.generateFromFile("../" + ALIREZA)
 
     def inputUCI(self):
         print("id name " + ENGINE_NAME)
@@ -37,21 +44,50 @@ class AlphaBetaEngine:
         print("readyok")
 
     def newGame(self):
+        # _bookMoves is a OpeningsTree node that is not None as long as there
+        # are still moves remaining.
+        self._bookMoves = self._openings
         self._table = {}
+        self._moves = 0
+
+    def printBookMoves(self):
+        print("book moves (moves #{})".format(self._moves))
+        children = self._bookMoves.getChildren()
+        for c in children:
+            print("  {}: {}".format(c, children[c].getCount()))
 
     def position(self, line):
         words = line.split()
         assert(words[0] == "position")
 
         if words[1] == "startpos":
+            self._bookMoves = self._openings
+            self._moves = 0
             self._board = BitBoard.createFromFen(STARTING_FEN)
+            if DEBUG:
+                self.printBookMoves()
             if len(words) > 2 and words[2] == "moves":
                 for move in words[3:]:
                     self._board = self._board.makeMove(move)
+                    self._moves += 1
+                    if self._bookMoves is None:
+                        continue
+                    if move in self._bookMoves.getChildren():
+                        self._bookMoves = self._bookmoves.getChild(move)
+                        if DEBUG:
+                            self.printBookMoves()
+                    else:
+                        self._bookMoves = None
         else:
             print("weird " + words.join())
 
     def go(self):
+
+        bookMove = self.consultBook()
+        if bookMove is not None:
+            print("bestmove " + bookMove)
+            return
+
         self._bestMoves = []
         moves = self._board.getLegalMoves()
         if self._board.isCheckMate():
@@ -62,14 +98,11 @@ class AlphaBetaEngine:
             return
         info = {}
         info['score'] = -1000 if self._board.whiteToMove() else 1000
-        info['moves'] = []
+        info['move'] = ""
         nodes, score = self.search(self._board, info)
-        if abs(info['score']) == 10000:
-            print("Forced check mate found!!")
-        bestMoves = copy.copy(info['moves'])
-        print(bestMoves)
-        print(info['score'])
-        print("bestmove " + random.choice(bestMoves))
+        # print(bestMoves)
+        # print(info['score'])
+        print("bestmove " + info['move'])
 
     def run(self):
         while True:
@@ -93,7 +126,14 @@ class AlphaBetaEngine:
                 print("goodbye")
                 break
 
-    """ =============== Minimax implementation ====================="""
+    """ =============== Alpha Beta implementation ====================="""
+    def consultBook(self):
+        if self._bookMoves is not None:
+            children = self._bookMoves.getChildren()
+            values = [c.getCount() for c in children.values()]
+            return random.choices(list(children.keys()), values)[0]
+        return None
+
     def evaluatePosition(board):
         if board.isCheckMate():
             return -10000 if board.whiteToMove() else 10000
@@ -125,7 +165,7 @@ class AlphaBetaEngine:
             newBoard = board.makeMove(move)
             newNodes, score = self.search(newBoard, {}, alpha, beta, depth + 1)
             nodes += newNodes
-            
+
             if (board.whiteToMove() and (score > bestScore)) or \
                     ((not board.whiteToMove()) and (score < bestScore)):
                 if depth == 0:

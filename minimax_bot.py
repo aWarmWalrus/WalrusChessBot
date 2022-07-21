@@ -11,7 +11,8 @@ from openings import OpeningTree
 ENGINE_NAME = "BAD_MINIMAX"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 TEST_FEN = "rn2k3/2pp1pp1/2b1pn2/1BB5/P3P3/1PN2Q1r/2PP1P1P/R3K1NR w KQq - 0 15"
-ALIREZA = "books/lichess_alireza2003_2022-07-20.pgn"
+ALIREZA = "books/lichess_alireza.alg"
+DEBUG = False
 
 PIECE_VALUES = {bitboard.PAWN: 100,
                 bitboard.ROOK: 500,
@@ -26,6 +27,11 @@ class MiniMaxEngine:
         self._board = BitBoard(0)
         self._maxDepth = 3 # in plies
         self._table = {}
+        self._moves = 0
+        try:
+            self._openings = OpeningTree.generateFromFile(ALIREZA)
+        except FileNotFoundError:
+            self._openings = OpeningTree.generateFromFile("../" + ALIREZA)
 
     def inputUCI(self):
         print("id name " + ENGINE_NAME)
@@ -39,23 +45,51 @@ class MiniMaxEngine:
         print("readyok")
 
     def newGame(self):
-        self._openings = OpeningTree.generateFromFile(ALIREZA)
+        # _bookMoves is a OpeningsTree node that is not None as long as there
+        # are still moves remaining.
+        self._bookMoves = self._openings
         self._table = {}
+        self._moves = 0
+
+    def printBookMoves(self):
+        print("book moves (move #{})".format(self._moves))
+        children = self._bookMoves.getChildren()
+        for c in children:
+            print("  {}: {}".format(c, children[c].getCount()))
 
     def position(self, line):
         words = line.split()
         assert(words[0] == "position")
 
         if words[1] == "startpos":
+            self._bookMoves = self._openings
             self._board = BitBoard.createFromFen(STARTING_FEN)
+            self._moves = 0
+            if DEBUG:
+                self.printBookMoves()
             if len(words) > 2 and words[2] == "moves":
                 for move in words[3:]:
                     self._board = self._board.makeMove(move)
+                    self._moves += 1
+                    if self._bookMoves is None:
+                        continue
+                    if move in self._bookMoves.getChildren():
+                        self._bookMoves = self._bookMoves.getChild(move)
+                        if DEBUG:
+                            self.printBookMoves()
+                    else:
+                        self._bookMoves = None
         else:
             print("weird " + words.join())
 
     def go(self):
         # Consult the opening book first
+        if self._bookMoves is not None and self._moves < 10:
+            children = self._bookMoves.getChildren()
+            values = [c.getCount() for c in children.values()]
+            print("bestmove " + \
+                random.choices(list(children.keys()), values)[0])
+            return
 
         self._bestMoves = []
         moves = self._board.getLegalMoves()
@@ -70,8 +104,8 @@ class MiniMaxEngine:
         info['moves'] = []
         nodes, score = self.search(self._board, info)
         bestMoves = copy.copy(info['moves'])
-        print(bestMoves)
-        print(info['score'])
+        # print(bestMoves)
+        # print(info['score'])
         print("bestmove " + random.choice(bestMoves))
 
     def run(self):
