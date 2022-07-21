@@ -6,10 +6,12 @@ import time
 from bitboard import BitBoard
 from collections import defaultdict
 from threading import Thread
+from openings import OpeningTree
 
 ENGINE_NAME = "BAD_MINIMAX"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 TEST_FEN = "rn2k3/2pp1pp1/2b1pn2/1BB5/P3P3/1PN2Q1r/2PP1P1P/R3K1NR w KQq - 0 15"
+ALIREZA = "books/lichess_alireza2003_2022-07-20.pgn"
 
 PIECE_VALUES = {bitboard.PAWN: 100,
                 bitboard.ROOK: 500,
@@ -37,6 +39,7 @@ class MiniMaxEngine:
         print("readyok")
 
     def newGame(self):
+        self._openings = OpeningTree.generateFromFile(ALIREZA)
         self._table = {}
 
     def position(self, line):
@@ -52,6 +55,8 @@ class MiniMaxEngine:
             print("weird " + words.join())
 
     def go(self):
+        # Consult the opening book first
+
         self._bestMoves = []
         moves = self._board.getLegalMoves()
         if self._board.isCheckMate():
@@ -64,8 +69,6 @@ class MiniMaxEngine:
         info['score'] = -1000 if self._board.whiteToMove() else 1000
         info['moves'] = []
         nodes, score = self.search(self._board, info)
-        if abs(info['score']) == 10000:
-            print("Forced check mate found!!")
         bestMoves = copy.copy(info['moves'])
         print(bestMoves)
         print(info['score'])

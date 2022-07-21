@@ -102,7 +102,7 @@ class AlphaBetaEngine:
         blackScore = sum([PIECE_VALUES[p] for p in blacks])
         return whiteScore - blackScore
 
-    def search(self, board, info, depth = 0):
+    def search(self, board, info, alpha = -1000000, beta = 1000000, depth = 0):
         if board.isCheckMate():
             return 1, (-10000 if board.whiteToMove() else 10000)
         if len(board.getLegalMoves()) == 0:  # stalemate
@@ -123,8 +123,9 @@ class AlphaBetaEngine:
             if depth == 0:
                 print("info currmove {} currmovenumber {}".format(move, i))
             newBoard = board.makeMove(move)
-            newNodes, score = self.search(newBoard, {}, depth + 1)
+            newNodes, score = self.search(newBoard, {}, alpha, beta, depth + 1)
             nodes += newNodes
+            
             if (board.whiteToMove() and (score > bestScore)) or \
                     ((not board.whiteToMove()) and (score < bestScore)):
                 if depth == 0:

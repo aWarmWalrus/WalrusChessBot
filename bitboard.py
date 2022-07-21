@@ -354,7 +354,7 @@ class BitBoard():
                     continue
                 moves.append(src + BitBoard.indexToAlgebraic(tmp))
                 continue
-            if tmp == self.getEnpassant():
+            if self.getEnpassant() > 0 and tmp == self.getEnpassant():
                 moves.append(src + BitBoard.indexToAlgebraic(tmp))
 
         # Pawn advance logic
@@ -453,7 +453,6 @@ class BitBoard():
 
         kingIndex = postMoveBoard.findPiece(king)
         return not postMoveBoard.isSquareAttacked(kingIndex, king)
-
 
     # Only for if the active player's king is in check mate, since it can't be
     # checkmate when it's not your turn.
