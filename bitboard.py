@@ -234,9 +234,9 @@ class BitBoard():
             if piece == 0:
                 continue
             if (8 & piece) == 0:
-                blackPieces.append(BitBoard.pieceType(piece))
+                blackPieces.append((BitBoard.pieceType(piece), i))
                 continue
-            whitePieces.append(BitBoard.pieceType(piece))
+            whitePieces.append((BitBoard.pieceType(piece), i))
         return (whitePieces, blackPieces)
 
     def castleLogic(self, move, piece, bits):

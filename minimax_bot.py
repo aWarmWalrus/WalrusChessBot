@@ -135,8 +135,8 @@ class MiniMaxEngine:
         if board.isCheckMate():
             return -10000 if board.whiteToMove() else 10000
         whites, blacks = board.activePieces()
-        whiteScore = sum([PIECE_VALUES[p] for p in whites])
-        blackScore = sum([PIECE_VALUES[p] for p in blacks])
+        whiteScore = sum([PIECE_VALUES[p[0]] for p in whites])
+        blackScore = sum([PIECE_VALUES[p[0]] for p in blacks])
         return whiteScore - blackScore
 
     def search(self, board, info, depth = 0, moves = ""):

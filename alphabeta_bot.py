@@ -14,12 +14,66 @@ TEST_FEN = "rn2k3/2pp1pp1/2b1pn2/1BB5/P3P3/1PN2Q1r/2PP1P1P/R3K1NR w KQq - 0 15"
 ALIREZA = "books/lichess_alireza.alg"
 DEBUG = False
 
-PIECE_VALUES = {bitboard.PAWN: 100,
-                bitboard.ROOK: 500,
-                bitboard.BISHOP: 300,
-                bitboard.KNIGHT: 400,
-                bitboard.QUEEN: 900,
-                bitboard.KING: 100000}
+PIECE_VALUES = {bitboard.PAWN:   100,
+                bitboard.KNIGHT: 320,
+                bitboard.BISHOP: 330,
+                bitboard.ROOK:   500,
+                bitboard.QUEEN:  900,
+                bitboard.KING:   20000}
+PAWN_VALUES = [0,  0,  0,  0,  0,  0,  0,  0, \
+              50, 50, 50, 50, 50, 50, 50, 50, \
+              10, 10, 20, 30, 30, 20, 10, 10, \
+               5,  5, 10, 25, 25, 10,  5,  5, \
+               0,  0,  0, 20, 20,  0,  0,  0, \
+               5, -5,-10,  0,  0,-10, -5,  5, \
+               5, 10, 10,-20,-20, 10, 10,  5, \
+               0,  0,  0,  0,  0,  0,  0,  0]
+KNIGHT_VALUES = [-50,-40,-30,-30,-30,-30,-40,-50,
+                -40,-20,  0,  0,  0,  0,-20,-40,
+                -30,  0, 10, 15, 15, 10,  0,-30,
+                -30,  5, 15, 20, 20, 15,  5,-30,
+                -30,  0, 15, 20, 20, 15,  0,-30,
+                -30,  5, 10, 15, 15, 10,  5,-30,
+                -40,-20,  0,  5,  5,  0,-20,-40,
+                -50,-40,-30,-30,-30,-30,-40,-50]
+BISHOP_VALUES = [-20,-10,-10,-10,-10,-10,-10,-20,
+                -10,  0,  0,  0,  0,  0,  0,-10,
+                -10,  0,  5, 10, 10,  5,  0,-10,
+                -10,  5,  5, 10, 10,  5,  5,-10,
+                -10,  0, 10, 10, 10, 10,  0,-10,
+                -10, 10, 10, 10, 10, 10, 10,-10,
+                -10,  5,  0,  0,  0,  0,  5,-10,
+                -20,-10,-10,-10,-10,-10,-10,-20]
+ROOK_VALUES = [0,  0,  0,  0,  0,  0,  0,  0,
+              5, 10, 10, 10, 10, 10, 10,  5,
+             -5,  0,  0,  0,  0,  0,  0, -5,
+             -5,  0,  0,  0,  0,  0,  0, -5,
+             -5,  0,  0,  0,  0,  0,  0, -5,
+             -5,  0,  0,  0,  0,  0,  0, -5,
+             -5,  0,  0,  0,  0,  0,  0, -5,
+              0,  0,  0,  5,  5,  0,  0,  0]
+QUEEN_VALUES = [-20,-10,-10, -5, -5,-10,-10,-20,
+                -10,  0,  0,  0,  0,  0,  0,-10,
+                -10,  0,  5,  5,  5,  5,  0,-10,
+                 -5,  0,  5,  5,  5,  5,  0, -5,
+                  0,  0,  5,  5,  5,  5,  0, -5,
+                -10,  5,  5,  5,  5,  5,  0,-10,
+                -10,  0,  5,  0,  0,  0,  0,-10,
+                -20,-10,-10, -5, -5,-10,-10,-20]
+KING_VALUES = [-30,-40,-40,-50,-50,-40,-40,-30,
+                -30,-40,-40,-50,-50,-40,-40,-30,
+                -30,-40,-40,-50,-50,-40,-40,-30,
+                -30,-40,-40,-50,-50,-40,-40,-30,
+                -20,-30,-30,-40,-40,-30,-30,-20,
+                -10,-20,-20,-20,-20,-20,-20,-10,
+                 20, 20,  0,  0,  0,  0, 20, 20,
+                 20, 30, 10,  0,  0, 10, 30, 20]
+EVAL_TABLES = {bitboard.PAWN:   PAWN_VALUES,
+               bitboard.KNIGHT: KNIGHT_VALUES,
+               bitboard.BISHOP: BISHOP_VALUES,
+               bitboard.ROOK:   ROOK_VALUES,
+               bitboard.QUEEN:  QUEEN_VALUES,
+               bitboard.KING:   KING_VALUES}
 
 class AlphaBetaEngine:
     def __init__(self):
@@ -135,15 +189,37 @@ class AlphaBetaEngine:
 
     def evaluatePosition(board):
         if board.isCheckMate():
-            return -10000 if board.whiteToMove() else 10000
+            return -100000 if board.whiteToMove() else 100000
         whites, blacks = board.activePieces()
-        whiteScore = sum([PIECE_VALUES[p] for p in whites])
-        blackScore = sum([PIECE_VALUES[p] for p in blacks])
+        whiteScore = 0
+        for piece, index in whites:
+            whiteScore += PIECE_VALUES[piece]
+            whiteScore += EVAL_TABLES[piece][index]
+
+        blackScore = 0
+        for piece, index in blacks:
+            # Eval tables are not symmetric. a8 is at index 0, and specified
+            # from white's perspective. Need to correct the index for black.
+            # a8 (0)  => a1 (56)
+            # a1 (56) => a8 (0)
+            # a4 (32) => a5 (24)
+            # b8 (1)  => b1 (57)
+            # b1 (57) => b1 (1)
+            # b4 (33) => b5 (25)
+            col = index % 8
+            bi = 56 - (index - col) + col
+
+            # print("{}, {} = {}".format(bin(piece), bi, EVAL_TABLES[piece][bi]))
+            blackScore += PIECE_VALUES[piece]
+            blackScore += EVAL_TABLES[piece][bi]
+        # print("WHITE: {}    BLACK: {}    total: {}".format(whiteScore, blackScore, whiteScore-blackScore))
+        # whiteScore = sum([PIECE_VALUES[p] for piece, index in whites])
+        # blackScore = sum([PIECE_VALUES[p] for p in blacks])
         return whiteScore - blackScore
 
     def search(self, board, info, moves = "", alpha = -1000000, beta = 1000000, depth = 0):
         if board.isCheckMate():
-            return 1, (-10000 if board.whiteToMove() else 10000)
+            return 1, (-100000 if board.whiteToMove() else 100000)
         if len(board.getLegalMoves()) == 0:  # stalemate
             return 1, 0
         if depth == self._maxDepth:
@@ -204,3 +280,5 @@ class AlphaBetaEngine:
 if __name__ == "__main__":
     engine = AlphaBetaEngine()
     engine.run()
+    # engine.position("position startpos moves e2e4")
+    # AlphaBetaEngine.evaluatePosition(engine._board)
