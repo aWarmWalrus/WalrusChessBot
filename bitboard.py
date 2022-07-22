@@ -15,7 +15,8 @@ Benchmarks:
     startposMoves(100): 0.7665094999974826ms
 """
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-TEST_FEN = "rn2k3/2pp1pp1/2b1pn2/1BB5/P3P3/1PN2Q1r/2PP1P1P/R3K1NR w KQq - 0 15"
+# TEST_FEN = "rn2k3/2pp1pp1/2b1pn2/1BB5/P3P3/1PN2Q1r/2PP1P1P/R3K1NR w KQq - 0 15"
+TEST_FEN = "3R1q1k/pp4b1/6Q1/8/1P4n1/P6K/6P1/2r5 w - - 4 40"
 
 EMPTY = 0
 PAWN = 1
@@ -361,7 +362,7 @@ class BitBoard():
                     continue
                 moves.append((src + BitBoard.indexToAlgebraic(tmp), 1))
                 continue
-            if self.getEnpassant() > 0 and tmp == self.getEnpassant():
+            if tmp == self.getEnpassant() and self.getEnpassant() > 0:
                 moves.append((src + BitBoard.indexToAlgebraic(tmp), 1))
 
         # Pawn advance logic
@@ -462,6 +463,24 @@ class BitBoard():
         kingIndex = postMoveBoard.findPiece(king)
         return not postMoveBoard.isSquareAttacked(kingIndex, king)
 
+    def kingCheckAnalysis(self, moves):
+        newMoves = []
+        for move in moves:
+            postMoveBoard = self.makeMove(move[0])
+            ourKing = KING | self.sideToMove()
+            ourKingIndex = postMoveBoard.findPiece(ourKing)
+            if postMoveBoard.isSquareAttacked(ourKingIndex, ourKing):
+                # Get rid of moves that leave our king in check
+                continue
+            otherKing = KING | (0 if self.whiteToMove() else 8)
+            otherKingIndex = postMoveBoard.findPiece(otherKing)
+            if postMoveBoard.isSquareAttacked(otherKingIndex, otherKing):
+                newMoves.append((move[0], (CHECK | move[1])))
+                continue
+            newMoves.append(move)
+        return newMoves
+
+
     # Only for if the active player's king is in check mate, since it can't be
     # checkmate when it's not your turn.
     def isCheckMate(self):
@@ -480,9 +499,9 @@ class BitBoard():
             piece = BitBoard.getPiece(self._bits, i)
             if piece == 0 or self.isOpponentPiece(piece):
                 continue
-            moves += filter(self.isKingSafeAfterMove, \
-                        self.legalMovesForPiece(piece, i))
+            moves += self.legalMovesForPiece(piece, i)
         moves += self.legalCastleMoves()
+        moves = self.kingCheckAnalysis(moves)
         moves.sort(key = (lambda m: m[1]), reverse=True)
         self._legalMoves = [m[0] for m in moves]
 

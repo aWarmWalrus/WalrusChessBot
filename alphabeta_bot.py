@@ -10,10 +10,15 @@ from openings import OpeningTree
 
 ENGINE_NAME = "ALPHA_BETA"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-TEST_FEN = "rn2k3/2pp1pp1/2b1pn2/1BB5/P3P3/1PN2Q1r/2PP1P1P/R3K1NR w KQq - 0 15"
+TEST_FEN = "8/1b6/p5R1/1p1kp3/3npq2/Q7/PP5P/5rNK w - - 6 38"
 ALIREZA = "books/lichess_alireza.alg"
-DEBUG = True
-USE_BOOK = False
+DEBUG = False
+USE_BOOK = True
+
+POS_INF = 1000000000
+NEG_INF = -1000000000
+WHITE_MATE = 1000000
+BLACK_MATE = -1000000
 
 PIECE_VALUES = {bitboard.PAWN:   100,
                 bitboard.KNIGHT: 320,
@@ -44,7 +49,11 @@ BISHOP_VALUES = [-20,-10,-10,-10,-10,-10,-10,-20,
                 -10,  0, 10, 10, 10, 10,  0,-10,
                 -10, 10, 10, 10, 10, 10, 10,-10,
                 -10,  5,  0,  0,  0,  0,  5,-10,
+<<<<<<< HEAD
                 -20,-10,-30,-10,-10,-30,-10,-20]
+=======
+                -20,-10,-20,-10,-10,-20,-10,-20]
+>>>>>>> 8ede4cbc181a00132321406f30e1bdb028b5b5a4
 ROOK_VALUES = [0,  0,  0,  0,  0,  0,  0,  0,
               5, 10, 10, 10, 10, 10, 10,  5,
              -5,  0,  0,  0,  0,  0,  0, -5,
@@ -52,7 +61,7 @@ ROOK_VALUES = [0,  0,  0,  0,  0,  0,  0,  0,
              -5,  0,  0,  0,  0,  0,  0, -5,
              -5,  0,  0,  0,  0,  0,  0, -5,
              -5,  0,  0,  0,  0,  0,  0, -5,
-              0,  0,  0,  5,  5,  0,  0,  0]
+              0,  0,  0, 10, 10,  0,  0,  0]
 QUEEN_VALUES = [-20,-10,-10, -5, -5,-10,-10,-20,
                 -10,  0,  0,  0,  0,  0,  0,-10,
                 -10,  0,  5,  5,  5,  5,  0,-10,
@@ -68,7 +77,7 @@ KING_VALUES = [-30,-40,-40,-50,-50,-40,-40,-30,
                 -20,-30,-30,-40,-40,-30,-30,-20,
                 -10,-20,-20,-20,-20,-20,-20,-10,
                  20, 20,  0,  0,  0,  0, 20, 20,
-                 20, 30, 10,  0,  0, 10, 30, 20]
+                 20, 50, 10,  0,  0, 10, 50, 20]
 KING_ENDGAME = [-50,-40,-30,-20,-20,-30,-40,-50,
                 -30,-20,-10,  0,  0,-10,-20,-30,
                 -30,-10, 20, 30, 30, 20,-10,-30,
@@ -156,6 +165,9 @@ class AlphaBetaEngine:
                             self.printBookMoves()
                     else:
                         self._bookMoves = None
+        elif words[1] == "fen":
+            self._bookMoves = None
+            self._board = BitBoard.createFromFen(" ".join(words[2:7]))
         else:
             print("weird " + words.join())
 
@@ -170,18 +182,16 @@ class AlphaBetaEngine:
         self._maxDepth = 4
         if len(args) > 1:
             if args[1] == "infinite":
-                self._maxDepth = 4
+                self._maxDepth = 6
             elif args[1] == "wtime":
                 whiteTime = int(args[2])
                 blackTime = int(args[4])
                 usTime = whiteTime if self._board.whiteToMove() else blackTime
                 opTime = blackTime if self._board.whiteToMove() else whiteTime
-                if usTime < 300000:
+                if usTime < 900000:
                     self._maxDepth = 4
-                elif usTime >= opTime * 1.5:
-                    self._maxDepth = 6
-                elif usTime >= opTime * 1.2:
-                    self._maxDepth = 5
+                # elif usTime >= opTime * 1.5:
+                #     self._maxDepth = 5
 
         self._bestMoves = []
         moves = self._board.getLegalMoves()
@@ -196,11 +206,12 @@ class AlphaBetaEngine:
         elif len(moves) == 0:
             print("stale mate...??")
             return
-        info = {}
-        info['move'] = ""
+        info = {"move":"",
+                "score":NEG_INF if self._board.whiteToMove() else POS_INF,
+                "pv":""}
         # searcher = Thread(target = self.search, args = (self._board, info,), daemon=True)
         # searcher.start()
-        nodes, score = self.search(self._board, info)
+        nodes, bestPath, score = self.search(self._board, info)
         print("bestmove " + info['move'])
 
     def run(self):
@@ -221,6 +232,7 @@ class AlphaBetaEngine:
             elif line.startswith("print"):
                 self._board.prettyPrint()
                 print(self._board.getLegalMoves())
+                print(AlphaBetaEngine.evaluatePosition(self._board))
             elif line.startswith("end") or line.startswith("quit"):
                 print("goodbye")
                 break
@@ -235,7 +247,7 @@ class AlphaBetaEngine:
 
     def evaluatePosition(board):
         if board.isCheckMate():
-            return -100000 if board.whiteToMove() else 100000
+            return BLACK_MATE if board.whiteToMove() else WHITE_MATE
         numMinors = 0
         whites, blacks = board.activePieces()
         isEndgame = (len(whites) + len(blacks)) <= 14
@@ -257,30 +269,34 @@ class AlphaBetaEngine:
         # blackScore = sum([PIECE_VALUES[p] for p in blacks])
         return whiteScore - blackScore
 
-    def search(self, board, info, moves = "", alpha = -1000000, beta = 1000000, depth = 0):
+    def search(self, board, info, alpha=NEG_INF, beta=POS_INF, depth=0):
         if board.isCheckMate():
-            return 1, (-100000 if board.whiteToMove() else 100000)
+            return 1, "", (BLACK_MATE if board.whiteToMove() else WHITE_MATE)
         if len(board.getLegalMoves()) == 0:  # stalemate
-            return 1, 0
+            return 1, "", 0
         if depth == self._maxDepth:
             score = AlphaBetaEngine.evaluatePosition(board)
-            return 1, score
+            return 1, "", score
 
+        legalMoves = board.getLegalMoves()
+        # if len(legalMoves) == 1:
+        #     return 1, legalMoves[0] + " " + bestPath, 0   # forced move
         # best move for the active player.
         bestMoves = []
-        bestScore = -1000000 if board.whiteToMove() else 1000000
-        i = 0
+        bestScore = NEG_INF if board.whiteToMove() else POS_INF
         nodes = 0
         if depth == 0:
             start = time.time()
-        legalMoves = board.getLegalMoves()
+        bestPath = ""
+        i = 0
         for move in legalMoves:
             i += 1
             if depth == 0:
                 print("info currmove {} currmovenumber {}".format(move, i), flush=True)
+
             newBoard = board.makeMove(move)
-            path = moves + " " + move
-            newNodes, score = self.search(newBoard, {}, path, \
+            # path = moves + move + " "
+            newNodes, path, score = self.search(newBoard, info, \
                 alpha, beta, depth + 1)
             nodes += newNodes
 
@@ -288,18 +304,36 @@ class AlphaBetaEngine:
                 bestScore = score
                 bestMoves = [move]
                 alpha = score
+                bestPath = path
                 if DEBUG:
                     print("info depth {} score cp {} nodes {} pv {}".format( \
                         self._maxDepth, bestScore * (1 if board.whiteToMove() else -1), \
                         nodes, path), flush=True)
-            elif not board.whiteToMove() and (score < bestScore):
+                if depth == 0:
+                    elapsedMs = int((time.time() - start) * 1000)
+                    print("info depth {} score cp {} time {} nodes {} pv {}".format( \
+                        self._maxDepth, bestScore * (1 if board.whiteToMove() else -1), \
+                        elapsedMs, nodes, move + " " + bestPath), flush=True)
+                if depth == 0 and score == WHITE_MATE:
+                    print("White checkmate is inevitable: {} {}".format(move, bestPath))
+                    break
+            elif (not board.whiteToMove()) and (score < bestScore):
                 bestScore = score
                 bestMoves = [move]
                 beta = score
+                bestPath = path
                 if DEBUG:
                     print("info depth {} score cp {} nodes {} pv {}".format( \
                         self._maxDepth, bestScore * (1 if board.whiteToMove() else -1), \
                         nodes, path), flush=True)
+                if depth == 0:
+                    elapsedMs = int((time.time() - start) * 1000)
+                    print("info depth {} score cp {} time {} nodes {} pv {}".format( \
+                        self._maxDepth, bestScore * (1 if board.whiteToMove() else -1), \
+                        elapsedMs, nodes, move + " " + bestPath), flush=True)
+                if depth == 0 and score == BLACK_MATE:
+                    print("Black checkmate is inevitable: {} {}".format(move, bestPath))
+                    break
             if score == bestScore:
                 bestMoves.append(move)
             if alpha > beta:
@@ -308,17 +342,32 @@ class AlphaBetaEngine:
                         "WHITE" if board.whiteToMove() else "BLACK", \
                         depth, alpha, beta, len(legalMoves) - i))
                 break
+
+        bestMove = random.choice(bestMoves)
+        bestPath = bestMove + " " + bestPath
+        # if board.whiteToMove():
+        #     if depth == self._maxDepth or bestScore == WHITE_MATE:
+        #         print("hello {} {}".format(bestScore, bestPath))
+        #         info['score'] = bestScore
+        #         info['pv'] = bestPath
+        # else:
+        #     if depth == self._maxDepth or bestScore == BLACK_MATE:
+        #         print("hello {} {}".format(bestScore, path))
+        #         info['score'] = bestScore
+        #         info['pv'] = bestPath
+
         if depth == 0:
-            info['move'] = random.choice(bestMoves)
+            info['move'] = bestMove
             elapsedMs = int((time.time() - start) * 1000)
             print("info depth {} score cp {} time {} nodes {} pv {}".format( \
                 self._maxDepth, bestScore * (1 if board.whiteToMove() else -1), \
-                elapsedMs, nodes, info['move']), flush=True)
-        return nodes, bestScore
+                elapsedMs, nodes, bestPath), flush=True)
+        return nodes, bestPath, bestScore
 
 
 if __name__ == "__main__":
     engine = AlphaBetaEngine()
     engine.run()
-    # engine.position("position startpos moves e2e4")
+    # engine.position("position startpos moves g1h3 d7d5 h3g5 h7h6 g5h7 h8h7 h1g1 e7e5 g1h1 g8f6 h1g1 b8c6 g1h1 f8b4 h1g1 c8e6 g1h1 f6e4 h1g1 d8h4 g1h1 b4c5 h1g1 e8d7 g1h1 g7g6 h1g1 b7b6 g1h1")
+    # engine.go([])
     # AlphaBetaEngine.evaluatePosition(engine._board)
