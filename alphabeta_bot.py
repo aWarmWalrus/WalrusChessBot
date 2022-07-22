@@ -44,7 +44,7 @@ BISHOP_VALUES = [-20,-10,-10,-10,-10,-10,-10,-20,
                 -10,  0, 10, 10, 10, 10,  0,-10,
                 -10, 10, 10, 10, 10, 10, 10,-10,
                 -10,  5,  0,  0,  0,  0,  5,-10,
-                -20,-10,-10,-10,-10,-10,-10,-20]
+                -20,-10,-30,-10,-10,-30,-10,-20]
 ROOK_VALUES = [0,  0,  0,  0,  0,  0,  0,  0,
               5, 10, 10, 10, 10, 10, 10,  5,
              -5,  0,  0,  0,  0,  0,  0, -5,
@@ -238,7 +238,7 @@ class AlphaBetaEngine:
             return -100000 if board.whiteToMove() else 100000
         numMinors = 0
         whites, blacks = board.activePieces()
-        isEndgame = (len(whites) + len(blacks)) < 14
+        isEndgame = (len(whites) + len(blacks)) <= 14
         evalTable = ENDGAME_TABLE if isEndgame else EVAL_TABLES
 
         whiteScore = 0
@@ -248,17 +248,8 @@ class AlphaBetaEngine:
 
         blackScore = 0
         for piece, index in blacks:
-            # Eval tables are not symmetric. a8 is at index 0, and specified
-            # from white's perspective. Need to correct the index for black.
-            # a8 (0)  => a1 (56)
-            # a1 (56) => a8 (0)
-            # a4 (32) => a5 (24)
-            # b8 (1)  => b1 (57)
-            # b1 (57) => b1 (1)
-            # b4 (33) => b5 (25)
             col = index % 8
             bi = 56 - (index - col) + col
-            # print("{}, {} = {}".format(bin(piece), bi, EVAL_TABLES[piece][bi]))
             blackScore += PIECE_VALUES[piece]
             blackScore += evalTable[piece][bi]
         # print("WHITE: {}    BLACK: {}    total: {}".format(whiteScore, blackScore, whiteScore-blackScore))
