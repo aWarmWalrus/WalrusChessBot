@@ -17,6 +17,7 @@ Benchmarks:
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 # TEST_FEN = "rn2k3/2pp1pp1/2b1pn2/1BB5/P3P3/1PN2Q1r/2PP1P1P/R3K1NR w KQq - 0 15"
 TEST_FEN = "3R1q1k/pp4b1/6Q1/8/1P4n1/P6K/6P1/2r5 w - - 4 40"
+TRICKY_FEN = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
 
 EMPTY = 0
 PAWN = 1
@@ -503,7 +504,8 @@ class BitBoard():
         moves += self.legalCastleMoves()
         moves = self.kingCheckAnalysis(moves)
         moves.sort(key = (lambda m: m[1]), reverse=True)
-        self._legalMoves = [m[0] for m in moves]
+        # self._legalMoves = [m[0] for m in moves]
+        self._legalMoves = moves
 
     """ ============== Debugging and Printing ===================== """
     def prettyPrint(self):
@@ -543,9 +545,25 @@ class BitBoard():
         self.prettyPrint()
         print()
 
+def perft(board, depth, maxDepth):
+    if depth == maxDepth:
+        return 1
+
+    if depth == 0:
+        print("Perft performance test")
+    nodes = 0
+    for move in board.getLegalMoves():
+        newBoard = board.makeMove(move[0])
+        nodes += perft(newBoard, depth + 1, maxDepth)
+    if depth == 0:
+        print("  Depth: " + str(depth))
+        print("  Nodes: " + str(nodes))
+    return nodes
+
 if __name__ == "__main__":
-    board = BitBoard.createFromFen(TEST_FEN)
+    board = BitBoard.createFromFen(STARTING_FEN)
+    perft(board, 0, 4)
     # for move in moves.split():
     #     board = board.makeMove(move)
-    board.prettyPrintVerbose()
-    print(board.getLegalMoves())
+    # board.prettyPrintVerbose()
+    # print(board.getLegalMoves())
