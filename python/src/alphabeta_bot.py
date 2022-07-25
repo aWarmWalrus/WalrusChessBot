@@ -11,7 +11,7 @@ from openings import OpeningTree
 ENGINE_NAME = "ALPHA_BETA"
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 TEST_FEN = "8/1b6/p5R1/1p1kp3/3npq2/Q7/PP5P/5rNK w - - 6 38"
-ALIREZA = "books/lichess_alireza.alg"
+ALIREZA = "../../books/lichess_alireza.alg"
 DEBUG = True
 USE_BOOK = True
 QUIESCE = False
