@@ -15,8 +15,8 @@ Benchmarks:
     startposMoves(100): 0.7665094999974826ms
 """
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-# TEST_FEN = "rn2k3/2pp1pp1/2b1pn2/1BB5/P3P3/1PN2Q1r/2PP1P1P/R3K1NR w KQq - 0 15"
-TEST_FEN = "3R1q1k/pp4b1/6Q1/8/1P4n1/P6K/6P1/2r5 w - - 4 40"
+TEST_FEN = "rn2k3/2pp1pp1/2b1pn2/1BB5/P3P3/1PN2Q1r/2PP1P1P/R3K1NR w KQq - 0 15"
+# TEST_FEN = "3R1q1k/pp4b1/6Q1/8/1P4n1/P6K/6P1/2r5 w - - 4 40"
 TRICKY_FEN = "r3k2r/pPppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
 
 EMPTY = 0
@@ -198,7 +198,7 @@ class BitBoard():
         #   Q (white queen-side): 3  (0b11)
         castles = 0
         for castle in fenArr[2]:
-            tmp = 1 if castle.islower() else 4
+            tmp = 0b0001 if castle.islower() else 0b0100
             if castle.lower() == "k":
                 castles |= tmp
             elif castle.lower() == "q":
@@ -614,12 +614,12 @@ class BitBoard():
         print()
 
 if __name__ == "__main__":
-    board = BitBoard.createFromFen(TRICKY_FEN)
+    board = BitBoard.createFromFen(TEST_FEN)
     # perft(board, 0, 4)
     # for move in moves.split():
     # board = board.makeMove("e2e4")
     board.prettyPrintVerbose()
-    board.printLegalMoves()
+    # board.printLegalMoves()
     # board = board.makeMove("e7e5")
     # board.prettyPrintVerbose()
     # print(board.getLegalMoves())
