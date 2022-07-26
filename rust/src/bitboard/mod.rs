@@ -116,7 +116,7 @@ impl ArrayBoard {
         let fen_arr: Vec<&str> = fen.split(' ').collect();
         let mut board: [u8; 64] = [0; 64];
         let mut index: usize = 0;
-        for (i, fen_row) in fen_arr[0].split('/').enumerate() {
+        for fen_row in fen_arr[0].split('/') {
             for c in fen_row.chars() {
                 if c.is_digit(10) {
                     index += c.to_digit(10).unwrap() as usize;
@@ -180,16 +180,59 @@ impl ArrayBoard {
         (self.meta & META_SIDE_TO_MOVE_MASK == 0) != (PIECE_SIDE_MASK & piece == 0)
     }
 
+    fn castle_logic(&mut self, bm: &BitMove, piece: u32) {
+        if piece_type!(piece) == (Pieces::King as u32) {
+            let rook = Pieces::Rook as u8 | self.side_to_move() as u8;
+            match (bm.source_square, bm.dest_square) {
+                (0o04, 0o02) => {
+                    self.remove_piece(0o00);
+                    self.add_piece(0o03, rook);
+                }
+                (0o04, 0o06) => {
+                    self.remove_piece(0o07);
+                    self.add_piece(0o05, rook);
+                }
+                (0o74, 0o72) => {
+                    self.remove_piece(0o70);
+                    self.add_piece(0o73, rook);
+                }
+                (0o74, 0o76) => {
+                    self.remove_piece(0o77);
+                    self.add_piece(0o75, rook);
+                }
+                _ => (),
+            }
+            // META_CASTLE = 1;
+            if self.white_to_move() {
+                self.meta &= !(0b11000);
+            } else {
+                self.meta &= !(0b00110);
+            }
+        }
+
+        // Remove castle possibility when the rook moves
+        if piece_type!(piece) == (Pieces::Rook as u32) {
+            // META_CASTLE = 1;
+            self.meta &= match (self.white_to_move(), (bm.source_square & 0b111) == 7) {
+                (false, true) => !(0b00010),
+                (false, false) => !(0b00100),
+                (true, true) => !(0b01000),
+                (true, false) => !(0b10000),
+            };
+        }
+        self.meta &= match (bm.dest_square, self.white_to_move()) {
+            (0o00, true) => !(0b00100),  // white takes black queen's rook
+            (0o07, true) => !(0b00010),  // white takes black king's rook
+            (0o70, false) => !(0b10000), // black takes white queen's rook
+            (0o77, false) => !(0b01000), // black takes white king's rook
+            _ => !(0),
+        }
+    }
+
     pub fn make_move(&self, bit_move: BitMove) -> ArrayBoard {
         let mut new_board = self.clone();
-        let source_row = (bit_move.source_square & ROW_MASK) >> ROW_OFFSET;
-        let source_col = bit_move.source_square & COL_MASK;
-        let dest_row = (bit_move.dest_square & ROW_MASK) >> ROW_OFFSET;
-        let dest_col = bit_move.dest_square & COL_MASK;
-        let promote_to = bit_move.promote_to;
 
         let source_piece = self.get_piece(bit_move.source_square as usize);
-        let dest_piece = self.get_piece(bit_move.dest_square as usize);
         let mut end_piece = source_piece;
 
         if (source_piece == 0) || self.is_opponent_piece(source_piece) {
@@ -197,8 +240,11 @@ impl ArrayBoard {
             panic!("Illegal move: {}", bit_move.to_string());
         }
 
+        new_board.castle_logic(&bit_move, source_piece);
+
         new_board.meta &= !(META_ENPASSANT_MASK << META_ENPASSANT);
         if piece_type!(source_piece) == (Pieces::Pawn as u32) {
+            let dest_row = (bit_move.dest_square & ROW_MASK) >> ROW_OFFSET;
             // Pawn promotion
             if dest_row == 0 || dest_row == 7 {
                 if bit_move.promote_to == 0 {
@@ -273,7 +319,7 @@ impl ArrayBoard {
 }
 
 impl BitMove {
-    pub fn from_move(mv: &str) -> BitMove {
+    pub fn from_string(mv: &str) -> BitMove {
         let source_square = algebraic_to_index(&mv[..2]) as u8;
         let dest_square = algebraic_to_index(&mv[2..4]) as u8;
         let promote_to = match mv.chars().nth(4) {
