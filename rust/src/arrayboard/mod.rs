@@ -4,12 +4,10 @@ The Board itself is represented using an array of 8 unsigned 32-bit ints.
 Each piece is 4 bits: 1 bit for the side it belongs to, and 3 bits for the
 piece type.
 */
-// extern crate num;
-// #[macro_use]
-// extern crate num_derive;
+#![allow(dead_code)]
+mod generate_moves;
 
 // Constants and Enums
-#![allow(dead_code)]
 const BOARD_SIZE: u32 = 8;
 const PIECE_SIZE: u32 = 4;
 const PIECE_MASK: u32 = 0b1111;
@@ -41,7 +39,7 @@ pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQ
 pub const TRICKY_FEN: &str = "r3k2r/pPppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
 #[derive(FromPrimitive)]
-enum Pieces {
+enum Piece {
     Empty = 0,
     Pawn = 1,
     Knight = 2,
@@ -75,25 +73,25 @@ pub struct BitMove {
 // Private Helper functions
 fn char_to_piece(piece: char) -> u32 {
     match piece.to_ascii_lowercase() {
-        'p' => Pieces::Pawn as u32,
-        'n' => Pieces::Knight as u32,
-        'b' => Pieces::Bishop as u32,
-        'r' => Pieces::Rook as u32,
-        'q' => Pieces::Queen as u32,
-        'k' => Pieces::King as u32,
-        _ => Pieces::Empty as u32,
+        'p' => Piece::Pawn as u32,
+        'n' => Piece::Knight as u32,
+        'b' => Piece::Bishop as u32,
+        'r' => Piece::Rook as u32,
+        'q' => Piece::Queen as u32,
+        'k' => Piece::King as u32,
+        _ => Piece::Empty as u32,
     }
 }
 
-fn piece_to_char(piece: u32) -> char {
+fn piece_to_char(piece: u32, if_none: &str) -> &str {
     match num::FromPrimitive::from_u32(piece) {
-        Some(Pieces::Pawn) => 'p',
-        Some(Pieces::Knight) => 'n',
-        Some(Pieces::Bishop) => 'b',
-        Some(Pieces::Rook) => 'r',
-        Some(Pieces::Queen) => 'q',
-        Some(Pieces::King) => 'k',
-        _ => ' ',
+        Some(Piece::Pawn) => "p",
+        Some(Piece::Knight) => "n",
+        Some(Piece::Bishop) => "b",
+        Some(Piece::Rook) => "r",
+        Some(Piece::Queen) => "q",
+        Some(Piece::King) => "k",
+        _ => if_none,
     }
 }
 
@@ -151,7 +149,7 @@ impl ArrayBoard {
         ArrayBoard { board, meta }
     }
 
-    // Make move logic.
+    // Getters ======================================================
     fn get_piece(&self, index: usize) -> u32 {
         self.board[index] as u32
     }
@@ -164,14 +162,6 @@ impl ArrayBoard {
         ((self.meta & 1) << PIECE_SIDE) as u32
     }
 
-    fn remove_piece(&mut self, index: usize) {
-        self.board[index] = 0;
-    }
-
-    fn add_piece(&mut self, index: usize, piece: u8) {
-        self.board[index] = piece;
-    }
-
     fn get_enpassant(&self) -> u8 {
         ((self.meta & (META_ENPASSANT_MASK << META_ENPASSANT)) >> META_ENPASSANT) as u8
     }
@@ -180,9 +170,18 @@ impl ArrayBoard {
         (self.meta & META_SIDE_TO_MOVE_MASK == 0) != (PIECE_SIDE_MASK & piece == 0)
     }
 
+    // MAKE MOVE logic ==============================================
+    fn remove_piece(&mut self, index: usize) {
+        self.board[index] = 0;
+    }
+
+    fn add_piece(&mut self, index: usize, piece: u8) {
+        self.board[index] = piece;
+    }
+
     fn castle_logic(&mut self, bm: &BitMove, piece: u32) {
-        if piece_type!(piece) == (Pieces::King as u32) {
-            let rook = Pieces::Rook as u8 | self.side_to_move() as u8;
+        if piece_type!(piece) == (Piece::King as u32) {
+            let rook = Piece::Rook as u8 | self.side_to_move() as u8;
             match (bm.source_square, bm.dest_square) {
                 (0o04, 0o02) => {
                     self.remove_piece(0o00);
@@ -211,7 +210,7 @@ impl ArrayBoard {
         }
 
         // Remove castle possibility when the rook moves
-        if piece_type!(piece) == (Pieces::Rook as u32) {
+        if piece_type!(piece) == (Piece::Rook as u32) {
             // META_CASTLE = 1;
             self.meta &= match (self.white_to_move(), (bm.source_square & 0b111) == 7) {
                 (false, true) => !(0b00010),
@@ -243,12 +242,12 @@ impl ArrayBoard {
         new_board.castle_logic(&bit_move, source_piece);
 
         new_board.meta &= !(META_ENPASSANT_MASK << META_ENPASSANT);
-        if piece_type!(source_piece) == (Pieces::Pawn as u32) {
+        if piece_type!(source_piece) == (Piece::Pawn as u32) {
             let dest_row = (bit_move.dest_square & ROW_MASK) >> ROW_OFFSET;
             // Pawn promotion
             if dest_row == 0 || dest_row == 7 {
                 if bit_move.promote_to == 0 {
-                    end_piece = self.side_to_move() | Pieces::Queen as u32;
+                    end_piece = self.side_to_move() | Piece::Queen as u32;
                 } else {
                     end_piece = self.side_to_move() | bit_move.promote_to as u32;
                 }
@@ -300,7 +299,7 @@ impl ArrayBoard {
 
             // let mut row_str = String::from("");
             let piece_bits = self.board[i as usize] as u32;
-            let piece = piece_to_char(piece_type!(piece_bits));
+            let piece = piece_to_char(piece_type!(piece_bits), " ");
             let side = piece_bits & 0b1000;
             if side == 0 {
                 print!("{}", piece);
@@ -316,6 +315,14 @@ impl ArrayBoard {
             }
         }
     }
+
+    pub fn print_legal_moves(&self) {
+        print!("Legal moves: ");
+        for m in self.generate_moves() {
+            print!("{}, ", m.to_string());
+        }
+        println!("");
+    }
 }
 
 impl BitMove {
@@ -323,10 +330,10 @@ impl BitMove {
         let source_square = algebraic_to_index(&mv[..2]) as u8;
         let dest_square = algebraic_to_index(&mv[2..4]) as u8;
         let promote_to = match mv.chars().nth(4) {
-            Some('q') => Pieces::Queen as u8,
-            Some('r') => Pieces::Rook as u8,
-            Some('b') => Pieces::Bishop as u8,
-            Some('n') => Pieces::Knight as u8,
+            Some('q') => Piece::Queen as u8,
+            Some('r') => Piece::Rook as u8,
+            Some('b') => Piece::Bishop as u8,
+            Some('n') => Piece::Knight as u8,
             _ => 0,
         };
         BitMove {
@@ -338,9 +345,17 @@ impl BitMove {
     }
 
     pub fn to_string(&self) -> String {
-        let mut move_str = index_to_algebraic(self.source_square as u32)
-            + &index_to_algebraic(self.dest_square as u32);
-        move_str.push(piece_to_char(self.promote_to as u32));
-        move_str
+        index_to_algebraic(self.source_square as u32)
+            + &index_to_algebraic(self.dest_square as u32)
+            + piece_to_char(self.promote_to as u32, "")
+    }
+
+    pub fn create(source_square: u8, dest_square: u8, promote_to: u8, meta: u8) -> BitMove {
+        BitMove {
+            source_square,
+            dest_square,
+            promote_to,
+            meta,
+        }
     }
 }
