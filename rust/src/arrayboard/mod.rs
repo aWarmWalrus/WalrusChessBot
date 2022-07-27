@@ -28,17 +28,13 @@ const META_CASTLE_MASK: u16 = 0b1111;
 const META_ENPASSANT: u16 = 5;
 const META_ENPASSANT_MASK: u16 = 0b111111;
 
-macro_rules! piece_type {
-    ($bits:ident) => {
-        $bits & PIECE_TYPE_MASK
-    };
-}
-
 // Fenstrings
 pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+pub const PERFT2_FEN: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
+pub const TEST_FEN: &str = "r3k2r/6B1/8/8/8/8/1b4b1/R3K2R b KQk - 0 1";
 pub const TRICKY_FEN: &str = "r3k2r/pPppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
-#[derive(FromPrimitive)]
+#[derive(FromPrimitive, Copy, Clone)]
 enum Piece {
     Empty = 0,
     Pawn = 1,
@@ -63,6 +59,7 @@ pub struct ArrayBoard {
 }
 
 #[allow(dead_code)]
+#[derive(Copy, Clone)]
 pub struct BitMove {
     source_square: u8,
     dest_square: u8,
@@ -105,6 +102,18 @@ fn index_to_algebraic(index: u32) -> String {
     let file = (('a' as u8) + (index % BOARD_SIZE) as u8) as char;
     let rank = 8 - (index / BOARD_SIZE);
     String::from(file) + &rank.to_string()
+}
+
+fn piece_type(piece: u32) -> u32 {
+    PIECE_TYPE_MASK & piece
+}
+
+fn piece_side(piece: u32) -> u32 {
+    PIECE_SIDE_MASK & piece
+}
+
+fn is_piece_white(piece: u32) -> bool {
+    (PIECE_SIDE_MASK & piece) != 0
 }
 
 // Struct implementations
@@ -180,7 +189,7 @@ impl ArrayBoard {
     }
 
     fn castle_logic(&mut self, bm: &BitMove, piece: u32) {
-        if piece_type!(piece) == (Piece::King as u32) {
+        if piece_type(piece) == (Piece::King as u32) {
             let rook = Piece::Rook as u8 | self.side_to_move() as u8;
             match (bm.source_square, bm.dest_square) {
                 (0o04, 0o02) => {
@@ -210,7 +219,7 @@ impl ArrayBoard {
         }
 
         // Remove castle possibility when the rook moves
-        if piece_type!(piece) == (Piece::Rook as u32) {
+        if piece_type(piece) == (Piece::Rook as u32) {
             // META_CASTLE = 1;
             self.meta &= match (self.white_to_move(), (bm.source_square & 0b111) == 7) {
                 (false, true) => !(0b00010),
@@ -228,7 +237,7 @@ impl ArrayBoard {
         }
     }
 
-    pub fn make_move(&self, bit_move: BitMove) -> ArrayBoard {
+    pub fn make_move(&self, bit_move: &BitMove) -> ArrayBoard {
         let mut new_board = self.clone();
 
         let source_piece = self.get_piece(bit_move.source_square as usize);
@@ -242,7 +251,7 @@ impl ArrayBoard {
         new_board.castle_logic(&bit_move, source_piece);
 
         new_board.meta &= !(META_ENPASSANT_MASK << META_ENPASSANT);
-        if piece_type!(source_piece) == (Piece::Pawn as u32) {
+        if piece_type(source_piece) == (Piece::Pawn as u32) {
             let dest_row = (bit_move.dest_square & ROW_MASK) >> ROW_OFFSET;
             // Pawn promotion
             if dest_row == 0 || dest_row == 7 {
@@ -299,7 +308,7 @@ impl ArrayBoard {
 
             // let mut row_str = String::from("");
             let piece_bits = self.board[i as usize] as u32;
-            let piece = piece_to_char(piece_type!(piece_bits), " ");
+            let piece = piece_to_char(piece_type(piece_bits), " ");
             let side = piece_bits & 0b1000;
             if side == 0 {
                 print!("{}", piece);

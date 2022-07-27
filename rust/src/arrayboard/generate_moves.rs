@@ -50,6 +50,13 @@ const KNIGHT_DIRS: [(i8, i8); 8] = [
     (2, -1),
     (1, -2),
 ];
+const PIECE_DIRS: [(Piece, [(i8, i8); 8]); 5] = [
+    (Piece::Knight, KNIGHT_DIRS),
+    (Piece::Bishop, BISHOP_DIRS),
+    (Piece::Rook, ROOK_DIRS),
+    (Piece::Queen, ROYAL_DIRS),
+    (Piece::King, ROYAL_DIRS),
+];
 const PROMOTIONS: [Piece; 4] = [Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen];
 
 // Returns the index and a bool. The returned bool is true iff the computed result
@@ -68,6 +75,16 @@ fn is_back_rank(index: usize) -> bool {
 }
 
 impl ArrayBoard {
+    fn find_piece(&self, piece: u8) -> u32 {
+        for i in 0..64 {
+            if self.board[i] == piece {
+                return i as u32;
+            }
+        }
+        self.pretty_print(true);
+        panic!("Piece not found on board {}", piece);
+    }
+
     fn legal_moves_for_pawn(&self, index: u8) -> Vec<BitMove> {
         let mut moves = Vec::new();
         let forward = if self.white_to_move() { -1 } else { 1 };
@@ -171,8 +188,57 @@ impl ArrayBoard {
         }
     }
 
-    fn is_square_attacked(self, _index: u32) -> bool {
+    fn is_square_attacked_by(
+        &self,
+        index: u32,
+        directions: [(i8, i8); 8],
+        piece: u32,
+        by_white: bool,
+    ) -> bool {
+        let is_multi_step = match num::FromPrimitive::from_u32(piece_type(piece)) {
+            Some(Piece::Bishop) => true,
+            Some(Piece::Rook) => true,
+            Some(Piece::Queen) => true,
+            _ => false,
+        };
+        for d in directions {
+            if d == (0, 0) {
+                continue;
+            }
+            let (mut scan, mut out_of_bounds) = index_plus_coord(index as i8, d);
+            while is_multi_step && !out_of_bounds && self.get_piece(scan) == 0 {
+                (scan, out_of_bounds) = index_plus_coord(scan as i8, d);
+            }
+            if out_of_bounds {
+                continue;
+            }
+            // println!("{:o} {} {:o}", index, piece, scan);
+            let attacker = self.get_piece(scan);
+            if (piece_type(attacker) == piece_type(piece)) && (by_white == is_piece_white(attacker))
+            {
+                // println!("BIG HELLO");
+                return true;
+            }
+        }
         false
+    }
+
+    fn is_square_attacked(&self, index: u32, by_white: bool) -> bool {
+        let forward = if by_white { 1 } else { -1 };
+        // println!("checking index: {}", index);
+        for diag in [(forward, 1), (forward, -1)] {
+            let (scan, out_of_bounds) = index_plus_coord(index as i8, diag);
+            if out_of_bounds {
+                continue;
+            }
+            let piece = self.get_piece(scan);
+            if piece_type(piece) == Piece::Pawn as u32 && (by_white == is_piece_white(piece)) {
+                return true;
+            }
+        }
+        PIECE_DIRS.iter().any(|(piece, directions)| {
+            self.is_square_attacked_by(index, *directions, *piece as u32, by_white)
+        })
     }
 
     fn legal_castle_moves(&self) -> Vec<BitMove> {
@@ -204,10 +270,13 @@ impl ArrayBoard {
                 (true, false) => [58, 59, 60],
                 (true, true) => [60, 61, 62],
             };
-            if transits.iter().any(|&t| self.is_square_attacked(t)) {
+            if transits
+                .iter()
+                .any(|&t| self.is_square_attacked(t, !self.white_to_move()))
+            {
                 continue;
             }
-            moves.push(match castle >> 1 {
+            moves.push(match castle >> META_CASTLE {
                 // e8g8 - black king-side
                 0b0001 => BitMove::create(0o04, 0o06, 0, 0),
                 // e8c8 - black queen-side
@@ -222,6 +291,14 @@ impl ArrayBoard {
         moves
     }
 
+    fn is_king_safe_after_move(&self, mv: &BitMove) -> bool {
+        let new_board = self.make_move(mv);
+        let king = self.side_to_move() | Piece::King as u32;
+        let king_index = new_board.find_piece(king as u8);
+
+        !new_board.is_square_attacked(king_index, !self.white_to_move())
+    }
+
     pub fn generate_moves(&self) -> Vec<BitMove> {
         let mut moves: Vec<BitMove> = Vec::new();
         for i in 0..64 {
@@ -229,10 +306,12 @@ impl ArrayBoard {
             if piece == 0 || self.is_opponent_piece(piece) {
                 continue;
             }
-            let piece_type = PIECE_TYPE_MASK & piece;
-            moves.append(&mut self.legal_moves_for_piece(piece_type, i as u8));
+            moves.append(&mut self.legal_moves_for_piece(piece_type(piece), i as u8));
         }
         moves.append(&mut self.legal_castle_moves());
         moves
+            .into_iter()
+            .filter(|mv| self.is_king_safe_after_move(mv))
+            .collect()
     }
 }
