@@ -3,7 +3,7 @@ use super::engine;
 use std::io;
 
 pub fn run() {
-    let mut board: Option<ArrayBoard> = None;
+    let mut board_opt: Option<ArrayBoard> = None;
     loop {
         let mut buffer = String::new();
         io::stdin().read_line(&mut buffer);
@@ -24,7 +24,7 @@ pub fn run() {
                 println!("readyok");
             }
             "position" => {
-                board = match instructions[1] {
+                board_opt = match instructions[1] {
                     "fen" => Some(ArrayBoard::create_from_fen(
                         instructions[2..8].join(" ").as_str(),
                     )),
@@ -44,10 +44,10 @@ pub fn run() {
                 };
             }
             "go" => {
-                match board {
-                    Some(b) => {
-                        let (best, nodes) = engine::search(
-                            b,
+                match board_opt {
+                    Some(board) => {
+                        let (best, score, nodes) = engine::search(
+                            board,
                             /* alpha= */ i64::MIN,
                             /* beta= */ i64::MAX,
                             /* depth=*/ 0,
@@ -55,7 +55,7 @@ pub fn run() {
                         match best {
                             Some(mv) => println!("bestmove {}", mv.to_string()),
                             None => {
-                                b.pretty_print(true);
+                                board.pretty_print(true);
                                 println!("ERROR: no moves possible");
                             }
                         }
@@ -64,7 +64,7 @@ pub fn run() {
                 };
             }
             "print" => {
-                match board {
+                match board_opt {
                     Some(b) => {
                         b.pretty_print(true);
                         b.print_legal_moves();

@@ -35,6 +35,7 @@ pub fn search(
         if -score > alpha {
             alpha = -score;
         }
+        best_move = bm;
     }
-    (None, alpha, nodes)
+    (best_move, alpha, nodes)
 }
