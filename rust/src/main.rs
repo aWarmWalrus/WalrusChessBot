@@ -5,11 +5,15 @@ extern crate test;
 extern crate num_derive;
 
 mod arrayboard;
+mod engine;
+mod uci;
 
 use arrayboard::ArrayBoard;
 use arrayboard::BitMove;
 use std::time::Instant;
 use test::Bencher;
+
+const DO_PERFT: bool = false;
 
 fn perft(board: ArrayBoard, max_depth: u32, depth: u32) -> u32 {
     if depth == max_depth {
@@ -24,17 +28,21 @@ fn perft(board: ArrayBoard, max_depth: u32, depth: u32) -> u32 {
 }
 
 fn main() {
-    let board = ArrayBoard::create_from_fen(arrayboard::PERFT2_FEN);
-    let start = Instant::now();
-    let nodes = perft(board, 5, 0);
-    let tm = start.elapsed().as_secs();
-    println!(
-        "Perft({}) results: {} nodes,  {:?}s,  {} nps",
-        5,
-        nodes,
-        tm,
-        nodes as u64 / tm
-    );
+    if DO_PERFT {
+        let board = ArrayBoard::create_from_fen(arrayboard::PERFT2_FEN);
+        let start = Instant::now();
+        let nodes = perft(board, 5, 0);
+        let tm = start.elapsed().as_secs();
+        println!(
+            "Perft({}) results: {} nodes,  {:?}s,  {} nps",
+            5,
+            nodes,
+            tm,
+            nodes as u64 / tm
+        );
+    } else {
+        uci::run();
+    }
     // board.pretty_print(true);
     // board.print_legal_moves();
     // board.pretty_print(true);
