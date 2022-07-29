@@ -50,20 +50,25 @@ const KNIGHT_DIRS: [(i8, i8); 8] = [
     (2, -1),
     (1, -2),
 ];
-const PIECE_DIRS: [(Piece, [(i8, i8); 8]); 5] = [
-    (Piece::Knight, KNIGHT_DIRS),
-    (Piece::Bishop, BISHOP_DIRS),
-    (Piece::Rook, ROOK_DIRS),
-    (Piece::Queen, ROYAL_DIRS),
-    (Piece::King, ROYAL_DIRS),
+const PIECE_DIRS: [(PieceType, [(i8, i8); 8]); 5] = [
+    (PieceType::Knight, KNIGHT_DIRS),
+    (PieceType::Bishop, BISHOP_DIRS),
+    (PieceType::Rook, ROOK_DIRS),
+    (PieceType::Queen, ROYAL_DIRS),
+    (PieceType::King, ROYAL_DIRS),
 ];
-const PROMOTIONS: [Piece; 4] = [Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen];
+const PROMOTIONS: [PieceType; 4] = [
+    PieceType::Knight,
+    PieceType::Bishop,
+    PieceType::Rook,
+    PieceType::Queen,
+];
 
 // Move meta bits
-const MOVE_CAPTURE: u8 = 0b00001;
-const MOVE_CHECK: u8 = 0b00010;
-const MOVE_CASTLE: u8 = 0b00100;
-const MOVE_PROMO: u8 = 0b01000;
+pub const MOVE_CAPTURE: u8 = 0b00001;
+pub const MOVE_CHECK: u8 = 0b00010;
+pub const MOVE_CASTLE: u8 = 0b00100;
+pub const MOVE_PROMO: u8 = 0b01000;
 
 // Returns the index and a bool. The returned bool is true iff the computed result
 // is out of bounds.
@@ -88,7 +93,7 @@ impl ArrayBoard {
             }
         }
         self.pretty_print(true);
-        panic!("Piece not found on board {}", piece);
+        panic!("Piece not found on board {:0b}", piece);
     }
 
     fn legal_moves_for_pawn(&self, index: u8) -> Vec<BitMove> {
@@ -108,19 +113,19 @@ impl ArrayBoard {
                         moves.push(BitMove::create(
                             index,
                             dest_index as u8,
-                            promote_to as u8,
+                            Some(promote_to),
                             MOVE_PROMO | MOVE_CAPTURE,
                         ));
                     }
                     continue;
                 }
                 // Pawn takes (non-promotion)
-                moves.push(BitMove::create(index, dest_index as u8, 0, MOVE_CAPTURE));
+                moves.push(BitMove::create(index, dest_index as u8, None, MOVE_CAPTURE));
                 continue;
             }
             // En-passant pawn take
             if (dest_index > 0) && (dest_index as u8 == self.get_enpassant()) {
-                moves.push(BitMove::create(index, dest_index as u8, 0, MOVE_CAPTURE));
+                moves.push(BitMove::create(index, dest_index as u8, None, MOVE_CAPTURE));
             }
         }
 
@@ -134,12 +139,12 @@ impl ArrayBoard {
                 moves.push(BitMove::create(
                     index,
                     dest_index as u8,
-                    promote_to as u8,
+                    Some(promote_to),
                     MOVE_PROMO,
                 ));
             }
         } else {
-            moves.push(BitMove::create(index, dest_index as u8, 0, 0));
+            moves.push(BitMove::create(index, dest_index as u8, None, 0));
         }
 
         // Pawn double advance
@@ -149,19 +154,19 @@ impl ArrayBoard {
         }
         let double = (dest_index as i8 + (BOARD_SIZE as i8 * forward)) as usize;
         if self.get_piece(double) == 0 {
-            moves.push(BitMove::create(index, double as u8, 0, 0));
+            moves.push(BitMove::create(index, double as u8, None, 0));
         }
         moves
     }
 
-    fn legal_moves_general(&self, piece: Piece, index: u8) -> Vec<BitMove> {
+    fn legal_moves_general(&self, piece: PieceType, index: u8) -> Vec<BitMove> {
         let mut moves = Vec::new();
         let (is_multi_step, directions) = match piece {
-            Piece::Knight => (false, KNIGHT_DIRS),
-            Piece::Bishop => (true, BISHOP_DIRS),
-            Piece::Rook => (true, ROOK_DIRS),
-            Piece::Queen => (true, ROYAL_DIRS),
-            Piece::King => (false, ROYAL_DIRS),
+            PieceType::Knight => (false, KNIGHT_DIRS),
+            PieceType::Bishop => (true, BISHOP_DIRS),
+            PieceType::Rook => (true, ROOK_DIRS),
+            PieceType::Queen => (true, ROYAL_DIRS),
+            PieceType::King => (false, ROYAL_DIRS),
             _ => (false, EMPTY),
         };
         for dir in directions {
@@ -170,7 +175,7 @@ impl ArrayBoard {
             }
             let (mut dest_index, mut out_of_bounds) = index_plus_coord(index as i8, dir);
             while is_multi_step && (!out_of_bounds) && (self.get_piece(dest_index) == 0) {
-                moves.push(BitMove::create(index, dest_index as u8, 0, 0));
+                moves.push(BitMove::create(index, dest_index as u8, None, 0));
                 (dest_index, out_of_bounds) = index_plus_coord(dest_index as i8, dir);
             }
             if out_of_bounds {
@@ -178,9 +183,9 @@ impl ArrayBoard {
             }
             let dest_piece = self.get_piece(dest_index);
             if dest_piece != 0 && self.is_opponent_piece(dest_piece) {
-                moves.push(BitMove::create(index, dest_index as u8, 0, MOVE_CAPTURE));
+                moves.push(BitMove::create(index, dest_index as u8, None, MOVE_CAPTURE));
             } else if !is_multi_step && dest_piece == 0 {
-                moves.push(BitMove::create(index, dest_index as u8, 0, 0))
+                moves.push(BitMove::create(index, dest_index as u8, None, 0))
             }
         }
         moves
@@ -188,7 +193,7 @@ impl ArrayBoard {
 
     fn legal_moves_for_piece(&self, piece: u32, index: u8) -> Vec<BitMove> {
         match num::FromPrimitive::from_u32(piece) {
-            Some(Piece::Pawn) => self.legal_moves_for_pawn(index),
+            Some(PieceType::Pawn) => self.legal_moves_for_pawn(index),
             Some(piece_type) => self.legal_moves_general(piece_type, index),
             _ => panic!("Weird piece: {}", piece),
         }
@@ -198,13 +203,13 @@ impl ArrayBoard {
         &self,
         index: u32,
         directions: [(i8, i8); 8],
-        piece: u32,
+        piece: PieceType,
         by_white: bool,
     ) -> bool {
-        let is_multi_step = match num::FromPrimitive::from_u32(piece_type(piece)) {
-            Some(Piece::Bishop) => true,
-            Some(Piece::Rook) => true,
-            Some(Piece::Queen) => true,
+        let is_multi_step = match piece {
+            PieceType::Bishop => true,
+            PieceType::Rook => true,
+            PieceType::Queen => true,
             _ => false,
         };
         for d in directions {
@@ -220,8 +225,7 @@ impl ArrayBoard {
             }
             // println!("{:o} {} {:o}", index, piece, scan);
             let attacker = self.get_piece(scan);
-            if (piece_type(attacker) == piece_type(piece)) && (by_white == is_piece_white(attacker))
-            {
+            if (piece_type(attacker) == piece as u32) && (by_white == is_piece_white(attacker)) {
                 // println!("BIG HELLO");
                 return true;
             }
@@ -238,12 +242,12 @@ impl ArrayBoard {
                 continue;
             }
             let piece = self.get_piece(scan);
-            if piece_type(piece) == Piece::Pawn as u32 && (by_white == is_piece_white(piece)) {
+            if piece_type(piece) == PieceType::Pawn as u32 && (by_white == is_piece_white(piece)) {
                 return true;
             }
         }
         PIECE_DIRS.iter().any(|(piece, directions)| {
-            self.is_square_attacked_by(index, *directions, *piece as u32, by_white)
+            self.is_square_attacked_by(index, *directions, *piece, by_white)
         })
     }
 
@@ -263,12 +267,19 @@ impl ArrayBoard {
                 (true, false) => [57, 58, 59],
                 (true, true) => [61, 62, 0],
             };
-            if sq_between
-                .iter()
-                .any(|&sq| (sq != 0 && self.get_piece(sq) != 0))
-            {
+            let mut all_empty = true;
+            for square in sq_between {
+                if square == 0 {
+                    continue;
+                }
+                if self.get_piece(square) != 0 {
+                    all_empty = false;
+                }
+            }
+            if !all_empty {
                 continue;
             }
+
             // Check that all squares king would have to traverse are safe
             let transits = match (self.white_to_move(), is_king_side) {
                 (false, false) => [2, 3, 4],
@@ -284,13 +295,13 @@ impl ArrayBoard {
             }
             moves.push(match castle >> META_CASTLE {
                 // e8g8 - black king-side
-                0b0001 => BitMove::create(0o04, 0o06, 0, MOVE_CASTLE),
+                0b0001 => BitMove::create(0o04, 0o06, None, MOVE_CASTLE),
                 // e8c8 - black queen-side
-                0b0010 => BitMove::create(0o04, 0o02, 0, MOVE_CASTLE),
+                0b0010 => BitMove::create(0o04, 0o02, None, MOVE_CASTLE),
                 // e1g1 - white king-side
-                0b0100 => BitMove::create(0o74, 0o76, 0, MOVE_CASTLE),
+                0b0100 => BitMove::create(0o74, 0o76, None, MOVE_CASTLE),
                 // e1c1 - white queen-side
-                0b1000 => BitMove::create(0o74, 0o72, 0, MOVE_CASTLE),
+                0b1000 => BitMove::create(0o74, 0o72, None, MOVE_CASTLE),
                 _ => panic!("Bad castle format {}", castle),
             });
         }
@@ -299,8 +310,8 @@ impl ArrayBoard {
 
     fn is_king_safe_after_move(&self, mv: &BitMove) -> bool {
         let new_board = self.make_move(mv);
-        let king = self.side_to_move() | Piece::King as u32;
-        let king_index = new_board.find_piece(king as u8);
+        let king = piece_to_bits(PieceType::King, self.side_to_move());
+        let king_index = new_board.find_piece(king);
 
         !new_board.is_square_attacked(king_index, !self.white_to_move())
     }
@@ -309,13 +320,13 @@ impl ArrayBoard {
         let mut new_moves: Vec<BitMove> = Vec::new();
         for mv in moves {
             let new_board = self.make_move(&mv);
-            let our_king = self.side_to_move() | Piece::King as u32;
-            let our_king_ind = new_board.find_piece(our_king as u8);
+            let our_king = piece_to_bits(PieceType::King, self.side_to_move());
+            let our_king_ind = new_board.find_piece(our_king);
             if new_board.is_square_attacked(our_king_ind, !self.white_to_move()) {
                 // filter out moves that leave / put our king in check
                 continue;
             }
-            let other_king = our_king ^ PIECE_SIDE_MASK;
+            let other_king = our_king ^ PIECE_SIDE_MASK as u8;
             let other_king_ind = new_board.find_piece(other_king as u8);
             if new_board.is_square_attacked(other_king_ind, self.white_to_move()) {
                 new_moves.push(BitMove {

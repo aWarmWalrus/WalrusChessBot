@@ -1,4 +1,5 @@
 #![feature(test)]
+#![allow(unused_imports)]
 extern crate num;
 extern crate test;
 #[macro_use]
@@ -15,38 +16,68 @@ use test::Bencher;
 
 const DO_PERFT: bool = false;
 
-fn perft(board: ArrayBoard, max_depth: u32, depth: u32) -> u32 {
-    if depth == max_depth {
-        return 1;
+fn perft(board: ArrayBoard, max_depth: u32, depth: u32) -> (u32, u32, u32, u32, u32) {
+    let (mut nodes, mut captures, mut castles, mut checks, mut promos) = (0, 0, 0, 0, 0);
+    if depth == (max_depth - 1) {
+        for mv in board.generate_moves() {
+            nodes += 1;
+            if mv.meta & arrayboard::generate_moves::MOVE_CAPTURE > 0 {
+                captures += 1;
+            }
+            if mv.meta & arrayboard::generate_moves::MOVE_CASTLE > 0 {
+                castles += 1;
+            }
+            if mv.meta & arrayboard::generate_moves::MOVE_CHECK > 0 {
+                checks += 1;
+            }
+            if mv.meta & arrayboard::generate_moves::MOVE_PROMO > 0 {
+                promos += 1;
+            }
+        }
+        return (nodes, captures, castles, checks, promos);
     }
-    let mut nodes = 0;
     for mv in board.generate_moves() {
         let new_board = board.make_move(&mv);
-        nodes += perft(new_board, max_depth, depth + 1);
+        // println!("{}", &mv.to_string());
+        // new_board.pretty_print(true);
+        let (n, c1, c2, c3, p) = perft(new_board, max_depth, depth + 1);
+        nodes += n;
+        captures += c1;
+        castles += c2;
+        checks += c3;
+        promos += p;
     }
-    nodes
+    (nodes, captures, castles, checks, promos)
 }
 
 fn main() {
     if DO_PERFT {
         let board = ArrayBoard::create_from_fen(arrayboard::PERFT2_FEN);
         let start = Instant::now();
-        let nodes = perft(board, 5, 0);
+        let depth = 5;
+        let (nodes, captures, castles, checks, promos) = perft(board, depth, 0);
         let tm = start.elapsed().as_secs();
         println!(
-            "Perft({}) results: {} nodes,  {:?}s,  {} nps",
-            5,
-            nodes,
+            "Perft({depth}) results: \n    \
+             nodes: {nodes}\n    \
+             captures: {captures}\n    \
+             castles: {castles}\n    \
+             checks: {checks}\n    \
+             promos: {promos}\n    \
+             {:?}s,  {} nps",
             tm,
             nodes as u64 / tm
         );
+        // let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
+        // board = board.make_move(&BitMove::from_string("a2a8"));
+        // board.print_legal_moves();
+        // board.pretty_print(true);
     } else {
+        println!("=============================================================");
+        println!("====           W A L R U S       B O T                   ====");
+        println!("=============================================================");
         uci::run();
     }
-    // board.pretty_print(true);
-    // board.print_legal_moves();
-    // board.pretty_print(true);
-    // board.pretty_print(true);
 }
 
 #[bench]
