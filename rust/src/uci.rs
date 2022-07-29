@@ -23,10 +23,18 @@ pub fn run() {
             "uci" => {
                 println!("id name walrus-bot");
                 println!("id author The Walrus");
+                println!("option name MaxDepth type spin default 5 min 1 max 10");
                 println!("uciok");
             }
             "setoption" => {
-                println!("unimplemented");
+                if instructions[1] == "name"
+                    && instructions[2] == "MaxDepth"
+                    && instructions[3] == "value"
+                {
+                    unsafe {
+                        engine::MAX_DEPTH = instructions[4].parse().unwrap_or_default();
+                    }
+                }
             }
             "ucinewgame" => {
                 println!("unimplemented");
@@ -37,7 +45,7 @@ pub fn run() {
             "p" | "position" => {
                 board_opt = match instructions[1] {
                     "fen" => Some(ArrayBoard::create_from_fen(
-                        instructions[2..8].join(" ").as_str(),
+                        instructions[2..].join(" ").as_str(),
                     )),
                     "sp" | "startpos" => {
                         let mut nb = ArrayBoard::create_from_fen(STARTING_FEN);
@@ -54,7 +62,7 @@ pub fn run() {
                     _ => None,
                 };
             }
-            "go" => {
+            "go" => unsafe {
                 match board_opt {
                     Some(board) => {
                         let start = Instant::now();
@@ -79,12 +87,12 @@ pub fn run() {
                     }
                     None => println!("ERROR: No board has been initialized yet. Use 'position'."),
                 };
-            }
+            },
             "print" => {
                 match board_opt {
                     Some(b) => {
                         b.pretty_print(true);
-                        b.print_legal_moves();
+                        b.print_legal_moves(false);
                     }
                     None => println!("ERROR: No board has been initialized yet. Use 'position'."),
                 };

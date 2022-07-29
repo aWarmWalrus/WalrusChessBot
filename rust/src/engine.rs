@@ -185,7 +185,7 @@ static mut INITIALIZED: bool = false;
 static mut MG_TABLE: [[i16; 64]; 12] = [[0; 64]; 12];
 static mut EG_TABLE: [[i16; 64]; 12] = [[0; 64]; 12];
 
-const MAX_DEPTH: u8 = 4;
+pub static mut MAX_DEPTH: u8 = 5;
 
 pub unsafe fn initialize_tables() {
     if INITIALIZED {
@@ -240,7 +240,7 @@ fn eval(board: ArrayBoard) -> i64 {
     (mg_phase * mg_score + eg_phase * eg_score) / 24
 }
 
-pub fn search(
+pub unsafe fn search(
     board: ArrayBoard,
     mut alpha: i64,
     beta: i64,

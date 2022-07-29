@@ -325,9 +325,16 @@ impl ArrayBoard {
         }
     }
 
-    pub fn print_legal_moves(&self) {
+    pub fn print_legal_moves(&self, verbose: bool) {
         print!("Legal moves: ");
+        if verbose {
+            println!();
+        }
         for m in self.generate_moves() {
+            if verbose {
+                println!("{} ({:b})", m.to_string(), m.meta);
+                continue;
+            }
             print!("{}, ", m.to_string());
         }
         println!("");

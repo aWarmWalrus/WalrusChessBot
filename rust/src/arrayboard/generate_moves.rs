@@ -350,6 +350,9 @@ impl ArrayBoard {
             moves.append(&mut self.legal_moves_for_piece(piece_type(piece), i as u8));
         }
         moves.append(&mut self.legal_castle_moves());
-        self.filter_king_checks(moves)
+        moves = self.filter_king_checks(moves);
+        // Reverse sort--higher meta is prioritized.
+        moves.sort_unstable_by(|&mv1, &mv2| mv2.meta.cmp(&mv1.meta));
+        moves
     }
 }
