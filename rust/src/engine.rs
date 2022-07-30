@@ -1,5 +1,7 @@
 use super::arrayboard::{is_piece_white, ArrayBoard, BitMove};
 use std::cmp;
+use std::io;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 // PeSTO piece evaluation tables
 #[rustfmt::skip]
@@ -181,28 +183,26 @@ const EG_PESTO: [[i16; 64]; 6] = [
 ];
 
 const GAMEPHASE_INCREMENTAL: [i16; 12] = [0, 0, 1, 1, 1, 1, 2, 2, 4, 4, 0, 0];
-static mut INITIALIZED: bool = false;
-static mut MG_TABLE: [[i16; 64]; 12] = [[0; 64]; 12];
-static mut EG_TABLE: [[i16; 64]; 12] = [[0; 64]; 12];
+const MG_TABLE: [[i16; 64]; 12] = initialize_tables(MG_PIECE_VALUES, MG_PESTO);
+const EG_TABLE: [[i16; 64]; 12] = initialize_tables(EG_PIECE_VALUES, EG_PESTO);
+const CHECKMATE: i64 = 100000000;
 
-pub static mut MAX_DEPTH: u8 = 5;
+pub static MAX_DEPTH: AtomicU8 = AtomicU8::new(6);
+const DEBUG: bool = true;
 
-pub unsafe fn initialize_tables() {
-    if INITIALIZED {
-        return;
-    }
-    for ptype in 0..6 {
-        for sq in 0..64 {
-            let b_piece = ptype * 2;
-            let w_piece = ptype * 2 + 1;
-            MG_TABLE[w_piece][sq] = MG_PIECE_VALUES[ptype] + MG_PESTO[ptype][sq];
-            EG_TABLE[w_piece][sq] = EG_PIECE_VALUES[ptype] + EG_PESTO[ptype][sq];
-            let flipped = sq ^ 0b111000;
-            MG_TABLE[b_piece][sq] = MG_PIECE_VALUES[ptype] + MG_PESTO[ptype][flipped];
-            EG_TABLE[b_piece][sq] = EG_PIECE_VALUES[ptype] + EG_PESTO[ptype][flipped];
+pub const fn initialize_tables(piece_vals: [i16; 6], pesto: [[i16; 64]; 6]) -> [[i16; 64]; 12] {
+    let mut table = [[0; 64]; 12];
+    let mut ptype = 0;
+    while ptype < 6 {
+        let mut sq = 0;
+        while sq < 64 {
+            table[ptype * 2 + 1][sq] = piece_vals[ptype] + pesto[ptype][sq];
+            table[ptype * 2][sq] = piece_vals[ptype] + pesto[ptype][sq ^ 0b111000];
+            sq += 1;
         }
+        ptype += 1;
     }
-    INITIALIZED = true;
+    table
 }
 
 fn eval(board: ArrayBoard) -> i64 {
@@ -211,22 +211,18 @@ fn eval(board: ArrayBoard) -> i64 {
     let mut b_mg = 0;
     let mut w_eg = 0;
     let mut b_eg = 0;
-    // Tapered eval: as the game approaches endgame, weigh the end game evaluation more heavily.
     for sq in 0..64 {
         let piece = board.get_piece(sq) as usize;
         if piece == 0 {
             continue;
         }
         let piece_f = piece - 2;
-        unsafe {
-            // println!("piece: {}  {:b}", piece, piece);
-            if is_piece_white(piece as u32) {
-                w_mg += MG_TABLE[piece_f][sq] as i64;
-                w_eg += EG_TABLE[piece_f][sq] as i64;
-            } else {
-                b_mg += MG_TABLE[piece_f][sq] as i64;
-                b_eg += EG_TABLE[piece_f][sq] as i64;
-            }
+        if is_piece_white(piece as u32) {
+            w_mg += MG_TABLE[piece_f][sq] as i64;
+            w_eg += EG_TABLE[piece_f][sq] as i64;
+        } else {
+            b_mg += MG_TABLE[piece_f][sq] as i64;
+            b_eg += EG_TABLE[piece_f][sq] as i64;
         }
         game_phase += GAMEPHASE_INCREMENTAL[piece_f] as i64;
     }
@@ -235,46 +231,96 @@ fn eval(board: ArrayBoard) -> i64 {
     } else {
         (b_mg - w_mg, b_eg - w_eg)
     };
+    // Tapered eval: as the game approaches endgame, weigh the end game evaluation more heavily.
+    // Endgame is decided based on number of minor pieces remaining.
     let mg_phase = cmp::max(game_phase, 24);
     let eg_phase = 24 - mg_phase;
     (mg_phase * mg_score + eg_phase * eg_score) / 24
 }
 
-pub unsafe fn search(
+fn print_info(score: i64, mate_in: Option<i8>, nodes: u64, pv: &str) {
+    if !DEBUG {
+        return;
+    }
+    match mate_in {
+        Some(m) => println!(
+            "info depth {MAX_DEPTH:?} score mate {mi} nodes {nodes} pv {pv}",
+            mi = (m + 1) / 2 * ((score / CHECKMATE) as i8)
+        ),
+        None => println!("info depth {MAX_DEPTH:?} score cp {score} nodes {nodes} pv {pv}"),
+    }
+}
+
+pub fn search(
     board: ArrayBoard,
     mut alpha: i64,
     beta: i64,
     depth: u8,
-) -> (Option<BitMove>, i64, u64) {
-    // let score = eval(board);
-    // board.pretty_print(true);
-    // println!("score: {score}    alpha: {alpha}   beta: {beta}");
-    if depth == MAX_DEPTH {
-        return (None, eval(board), 1);
+) -> (String, i64, Option<i8>, u64) {
+    if depth == MAX_DEPTH.load(Ordering::Relaxed) {
+        return ("".to_string(), eval(board), None, /* nodes */ 1);
     }
     let moves = board.generate_moves();
-    // Check for checkmate and stalemate.
     if moves.len() == 0 {
-        return (None, 0, 1);
+        if board.is_king_checked() {
+            return ("".to_string(), -CHECKMATE, Some(1), 1);
+        }
+        return ("".to_string(), 0, None, 1);
     }
 
     let mut nodes = 0;
-    let mut best_move: Option<BitMove> = None;
+    let mut best_mate_in: Option<i8> = None;
+    let mut best_pv: String = String::from("");
 
-    for mv in moves {
+    for (i, mv) in moves.into_iter().enumerate() {
+        if depth == 0 {
+            println!("info currmove {} currmovenumber {i}", mv.to_string());
+        }
         let new_board = board.make_move(&mv);
-        let (_, score, child_nodes) = search(new_board, -beta, -alpha, depth + 1);
+        let (pv, score, mate_in, child_nodes) = search(new_board, -beta, -alpha, depth + 1);
         nodes += child_nodes;
 
-        // if -score >= beta {
-        //     // println!("score is better than beta... score (-){score}  beta {beta}");
-        //     return (best_move, beta, nodes);
-        // }
+        if -score >= beta {
+            return (
+                mv.to_string() + " " + &pv,
+                beta,
+                match best_mate_in {
+                    None => None,
+                    Some(m) => Some(m + 1),
+                },
+                nodes,
+            );
+        }
         if -score > alpha {
-            // println!("score is better than alpha... score (-){score}  alpha {alpha} beta {beta}");
             alpha = -score;
-            best_move = Some(mv);
+            best_mate_in = mate_in;
+            best_pv = mv.to_string() + " " + &pv.to_string();
+            if depth == 0 {
+                print_info(-score, mate_in, nodes, &best_pv);
+            }
+        } else if score == -CHECKMATE &&
+                let Some(bm) = best_mate_in &&
+                let Some(m) = mate_in &&
+                m < bm {
+            println!("{}{} Found a better CHECKMATE best_mate_in {best_mate_in:?}  mate_in: {m}  score: {score} {:?}",
+            "  ".repeat(depth as usize), if board.white_to_move() { "W" } else {"B"}, mate_in);
+            let mut buffer = String::new();
+            io::stdin().read_line(&mut buffer).ok();
+            alpha = -score;
+            best_mate_in = mate_in;
+            best_pv = mv.to_string() + " " + &pv.to_string();
+            if depth == 0 {
+                print_info(-score, mate_in, nodes, &best_pv);
+            }
         }
     }
-    (best_move, alpha, nodes)
+    (
+        best_pv,
+        alpha,
+        match best_mate_in {
+            None => None,
+            Some(m) => Some(m + 1),
+        },
+        nodes,
+    )
 }

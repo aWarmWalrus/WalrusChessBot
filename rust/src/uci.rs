@@ -2,13 +2,11 @@ use super::arrayboard::{ArrayBoard, BitMove, STARTING_FEN};
 use super::engine;
 use std::cmp;
 use std::io;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 pub fn run() {
     let mut board_opt: Option<ArrayBoard> = None;
-    unsafe {
-        engine::initialize_tables();
-    }
     loop {
         let mut buffer = String::new();
         let result = io::stdin().read_line(&mut buffer);
@@ -31,9 +29,10 @@ pub fn run() {
                     && instructions[2] == "MaxDepth"
                     && instructions[3] == "value"
                 {
-                    unsafe {
-                        engine::MAX_DEPTH = instructions[4].parse().unwrap_or_default();
-                    }
+                    engine::MAX_DEPTH.store(
+                        instructions[4].parse::<u8>().unwrap_or_default(),
+                        Ordering::Relaxed,
+                    );
                 }
             }
             "ucinewgame" => {
@@ -62,32 +61,31 @@ pub fn run() {
                     _ => None,
                 };
             }
-            "go" => unsafe {
+            "go" => {
                 match board_opt {
                     Some(board) => {
                         let start = Instant::now();
-                        let (best, _score, nodes) = engine::search(
+                        let (best, _score, _mate_in, nodes) = engine::search(
                             board,
-                            /* alpha= */ i64::MIN,
-                            /* beta= */ i64::MAX,
+                            /* alpha= */ i32::MIN as i64,
+                            /* beta= */ i32::MAX as i64,
                             /* depth=*/ 0,
                         );
-                        match best {
-                            Some(mv) => println!("bestmove {}", mv.to_string()),
-                            None => {
-                                board.pretty_print(true);
-                                println!("ERROR: no moves possible");
-                            }
+                        if best.is_empty() {
+                            board.pretty_print(true);
+                            println!("ERROR: no moves possible");
+                        } else {
+                            println!("bestmove {}", best.split_whitespace().nth(0).unwrap());
                         }
                         let tm = start.elapsed().as_millis();
                         println!(
-                            "info nodes {nodes} time {tm} nps {}",
-                            nodes as u128 / cmp::max(tm / 1000, 1)
+                            "info nodes {nodes} time {tm} nps {:3}",
+                            nodes as f64 / (tm as f64 / 1000.0)
                         );
                     }
                     None => println!("ERROR: No board has been initialized yet. Use 'position'."),
                 };
-            },
+            }
             "print" => {
                 match board_opt {
                     Some(b) => {

@@ -27,6 +27,8 @@ const META_CASTLE: u16 = 1;
 const META_CASTLE_MASK: u16 = 0b1111;
 const META_ENPASSANT: u16 = 5;
 const META_ENPASSANT_MASK: u16 = 0b111111;
+const META_KING_CHECK_MASK: u16 = 0b10000000000;
+const META_KING_CHECK: u16 = 10;
 
 // Fenstrings
 pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -63,6 +65,7 @@ pub struct ArrayBoard {
     //   - meta[0] = side to move
     //   - meta[1:4] = castles
     //   - meta[4:10] = en passant index
+    //   - meta[10] = a king is checked
     meta: u16,
 }
 
@@ -180,6 +183,10 @@ impl ArrayBoard {
         (self.meta & META_SIDE_TO_MOVE_MASK == 0) != (PIECE_SIDE_MASK & piece == 0)
     }
 
+    pub fn is_king_checked(&self) -> bool {
+        self.meta & META_KING_CHECK_MASK > 0
+    }
+
     // MAKE MOVE logic ==============================================
     pub fn get_piece(&self, index: usize) -> u32 {
         self.board[index] as u32
@@ -278,8 +285,11 @@ impl ArrayBoard {
                 new_board.meta |= ((ep_row | source_col) << META_ENPASSANT) as u16;
             }
         }
+        if bit_move.meta & generate_moves::MOVE_CHECK > 0 {
+            new_board.meta |= META_KING_CHECK_MASK;
+        }
 
-        new_board.meta ^= 1;
+        new_board.meta ^= META_SIDE_TO_MOVE_MASK;
         new_board.remove_piece(bit_move.source_square as usize);
         new_board.add_piece(bit_move.dest_square as usize, end_piece as u8);
         new_board
