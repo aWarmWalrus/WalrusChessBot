@@ -2,6 +2,7 @@ use super::arrayboard::{is_piece_white, ArrayBoard, BitMove};
 use std::cmp;
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::time::Instant;
 
 // PeSTO piece evaluation tables
 #[rustfmt::skip]
@@ -205,6 +206,23 @@ pub const fn initialize_tables(piece_vals: [i16; 6], pesto: [[i16; 64]; 6]) -> [
     table
 }
 
+fn print_info(score: i64, mate_in: Option<i8>, nodes: u64, start: Instant, pv: &str) {
+    if !DEBUG {
+        return;
+    }
+    let time = start.elapsed().as_millis();
+    let nps = ((nodes as f64 / time as f64) * 1000.0) as i64;
+    match mate_in {
+        Some(m) => println!(
+            "info depth {MAX_DEPTH:?} time {time} score mate {mi} nodes {nodes} nps {nps} pv {pv}",
+            mi = (m + 1) / 2 * ((score / CHECKMATE) as i8)
+        ),
+        None => {
+            println!("info depth {MAX_DEPTH:?} time {time} score cp {score} nodes {nodes} nps {nps} pv {pv}")
+        }
+    }
+}
+
 fn eval(board: ArrayBoard) -> i64 {
     let mut game_phase = 0;
     let mut w_mg = 0;
@@ -238,19 +256,6 @@ fn eval(board: ArrayBoard) -> i64 {
     (mg_phase * mg_score + eg_phase * eg_score) / 24
 }
 
-fn print_info(score: i64, mate_in: Option<i8>, nodes: u64, pv: &str) {
-    if !DEBUG {
-        return;
-    }
-    match mate_in {
-        Some(m) => println!(
-            "info depth {MAX_DEPTH:?} score mate {mi} nodes {nodes} pv {pv}",
-            mi = (m + 1) / 2 * ((score / CHECKMATE) as i8)
-        ),
-        None => println!("info depth {MAX_DEPTH:?} score cp {score} nodes {nodes} pv {pv}"),
-    }
-}
-
 pub fn search(
     board: ArrayBoard,
     mut alpha: i64,
@@ -271,6 +276,11 @@ pub fn search(
     let mut nodes = 0;
     let mut best_mate_in: Option<i8> = None;
     let mut best_pv: String = String::from("");
+    let start_time = if depth == 0 {
+        Some(Instant::now())
+    } else {
+        None
+    };
 
     for (i, mv) in moves.into_iter().enumerate() {
         if depth == 0 {
@@ -296,7 +306,7 @@ pub fn search(
             best_mate_in = mate_in;
             best_pv = mv.to_string() + " " + &pv.to_string();
             if depth == 0 {
-                print_info(-score, mate_in, nodes, &best_pv);
+                print_info(-score, mate_in, nodes, start_time.unwrap(), &best_pv);
             }
         } else if score == -CHECKMATE &&
                 let Some(bm) = best_mate_in &&
@@ -310,7 +320,7 @@ pub fn search(
             best_mate_in = mate_in;
             best_pv = mv.to_string() + " " + &pv.to_string();
             if depth == 0 {
-                print_info(-score, mate_in, nodes, &best_pv);
+                print_info(-score, mate_in, nodes, start_time.unwrap(), &best_pv);
             }
         }
     }

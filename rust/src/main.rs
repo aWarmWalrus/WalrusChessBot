@@ -68,10 +68,6 @@ fn main() {
             tm,
             nodes as u64 / tm
         );
-        // let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
-        // board = board.make_move(&BitMove::from_string("a2a8"));
-        // board.print_legal_moves();
-        // board.pretty_print(true);
     } else {
         println!("=============================================================");
         println!("====           W A L R U S       B O T                   ====");

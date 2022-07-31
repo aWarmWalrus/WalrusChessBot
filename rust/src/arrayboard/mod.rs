@@ -27,7 +27,7 @@ const META_CASTLE: u16 = 1;
 const META_CASTLE_MASK: u16 = 0b1111;
 const META_ENPASSANT: u16 = 5;
 const META_ENPASSANT_MASK: u16 = 0b111111;
-const META_KING_CHECK_MASK: u16 = 0b10000000000;
+const META_KING_CHECK_MASK: u16 = 0b100000000000;
 const META_KING_CHECK: u16 = 10;
 
 // Fenstrings
@@ -51,10 +51,6 @@ pub fn piece_type(piece: u32) -> u32 {
     (piece & PIECE_TYPE_MASK) >> PIECE_TYPE
 }
 
-// pub fn piece_side(piece: u32) -> u32 {
-//     piece & PIECE_SIDE_MASK
-// }
-//
 // Struct definitions
 #[derive(Copy, Clone)]
 pub struct ArrayBoard {
@@ -63,9 +59,9 @@ pub struct ArrayBoard {
     board: [u8; 64],
     // Represents the meta data:
     //   - meta[0] = side to move
-    //   - meta[1:4] = castles
-    //   - meta[4:10] = en passant index
-    //   - meta[10] = a king is checked
+    //   - meta[1:5] = castles
+    //   - meta[5:11] = en passant index
+    //   - meta[11] = a king is checked
     meta: u16,
 }
 
@@ -138,7 +134,6 @@ impl ArrayBoard {
                 }
                 let player = if c.is_lowercase() { 0 } else { 1 };
                 board[index] = (player | (char_to_piece(c) << PIECE_TYPE)) as u8;
-                // println!("{:b}", board[index]);
                 index += 1;
             }
         }
@@ -299,10 +294,6 @@ impl ArrayBoard {
     pub fn pretty_print(&self, verbose: bool) {
         if verbose {
             println!(" ---------------- BOARD STATE ----------------- ");
-            // println!("  Board bits as hexa: (pieces are flipped left to right)");
-            // for (i, piece) in self.board.enumerate() {
-            //     println!("    {:08x}", i);
-            // }
             println!("  Board metadata in binary:");
             let enpassant = (self.meta & (META_ENPASSANT_MASK << META_ENPASSANT)) >> META_ENPASSANT;
             let castles = (self.meta & (META_CASTLE_MASK << META_CASTLE)) >> META_CASTLE;
