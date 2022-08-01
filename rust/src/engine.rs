@@ -188,8 +188,8 @@ const MG_TABLE: [[i16; 64]; 12] = initialize_tables(MG_PIECE_VALUES, MG_PESTO);
 const EG_TABLE: [[i16; 64]; 12] = initialize_tables(EG_PIECE_VALUES, EG_PESTO);
 const CHECKMATE: i64 = 100000000;
 
-pub static MAX_DEPTH: AtomicU8 = AtomicU8::new(6);
-const DEBUG: bool = true;
+pub static MAX_DEPTH: AtomicU8 = AtomicU8::new(8);
+const DEBUG: bool = false;
 
 pub const fn initialize_tables(piece_vals: [i16; 6], pesto: [[i16; 64]; 6]) -> [[i16; 64]; 12] {
     let mut table = [[0; 64]; 12];
@@ -263,7 +263,7 @@ pub fn search(
     depth: u8,
 ) -> (String, i64, Option<i8>, u64) {
     if depth == MAX_DEPTH.load(Ordering::Relaxed) {
-        return ("".to_string(), eval(board), None, /* nodes */ 1);
+        return ("".to_string(), eval(board), None, 1);
     }
     let moves = board.generate_moves();
     if moves.len() == 0 {
@@ -312,10 +312,10 @@ pub fn search(
                 let Some(bm) = best_mate_in &&
                 let Some(m) = mate_in &&
                 m < bm {
-            println!("{}{} Found a better CHECKMATE best_mate_in {best_mate_in:?}  mate_in: {m}  score: {score} {:?}",
-            "  ".repeat(depth as usize), if board.white_to_move() { "W" } else {"B"}, mate_in);
-            let mut buffer = String::new();
-            io::stdin().read_line(&mut buffer).ok();
+            // println!("{}{} Found a better CHECKMATE best_mate_in {best_mate_in:?}  mate_in: {m}  score: {score} {:?}",
+            // "  ".repeat(depth as usize), if board.white_to_move() { "W" } else {"B"}, mate_in);
+            // let mut buffer = String::new();
+            // io::stdin().read_line(&mut buffer).ok();
             alpha = -score;
             best_mate_in = mate_in;
             best_pv = mv.to_string() + " " + &pv.to_string();

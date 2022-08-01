@@ -1,4 +1,5 @@
 use super::arrayboard::{ArrayBoard, BitMove, STARTING_FEN};
+use super::book_moves;
 use super::engine;
 use std::cmp;
 use std::io;
@@ -6,6 +7,8 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 pub fn run() {
+    let _book: book_moves::BookMovesTree = book_moves::BookMovesTree::generate_from_file();
+
     let mut board_opt: Option<ArrayBoard> = None;
     loop {
         let mut buffer = String::new();
@@ -21,7 +24,7 @@ pub fn run() {
             "uci" => {
                 println!("id name walrus-bot");
                 println!("id author The Walrus");
-                println!("option name MaxDepth type spin default 5 min 1 max 10");
+                println!("option name MaxDepth type spin default 7 min 1 max 10");
                 println!("uciok");
             }
             "setoption" => {
@@ -36,7 +39,7 @@ pub fn run() {
                 }
             }
             "ucinewgame" => {
-                println!("unimplemented");
+                ()
             }
             "isready" => {
                 println!("readyok");
@@ -71,17 +74,17 @@ pub fn run() {
                             /* beta= */ i32::MAX as i64,
                             /* depth=*/ 0,
                         );
+                        let tm = start.elapsed().as_millis();
+                        println!(
+                            "info nodes {nodes} time {tm} nps {}",
+                            (nodes as f64 / (tm as f64 / 1000.0)) as u64
+                        );
                         if best.is_empty() {
                             board.pretty_print(true);
                             println!("ERROR: no moves possible");
                         } else {
                             println!("bestmove {}", best.split_whitespace().nth(0).unwrap());
                         }
-                        let tm = start.elapsed().as_millis();
-                        println!(
-                            "info nodes {nodes} time {tm} nps {:3}",
-                            nodes as f64 / (tm as f64 / 1000.0)
-                        );
                     }
                     None => println!("ERROR: No board has been initialized yet. Use 'position'."),
                 };
@@ -95,9 +98,7 @@ pub fn run() {
                     None => println!("ERROR: No board has been initialized yet. Use 'position'."),
                 };
             }
-            "exit" => break,
-            "end" => break,
-            "quit" => break,
+            "exit" | "end" | "quit" => break,
             _ => (),
         }
     }
