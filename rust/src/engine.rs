@@ -189,7 +189,7 @@ const EG_TABLE: [[i16; 64]; 12] = initialize_tables(EG_PIECE_VALUES, EG_PESTO);
 const CHECKMATE: i64 = 100000000;
 
 pub static MAX_DEPTH: AtomicU8 = AtomicU8::new(8);
-const DEBUG: bool = false;
+const DEBUG: bool = true;
 
 pub const fn initialize_tables(piece_vals: [i16; 6], pesto: [[i16; 64]; 6]) -> [[i16; 64]; 12] {
     let mut table = [[0; 64]; 12];
