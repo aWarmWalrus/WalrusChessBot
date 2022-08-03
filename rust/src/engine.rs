@@ -189,6 +189,7 @@ const EG_TABLE: [[i16; 64]; 12] = initialize_tables(EG_PIECE_VALUES, EG_PESTO);
 const CHECKMATE: i64 = 100000000;
 
 pub static MAX_DEPTH: AtomicU8 = AtomicU8::new(7);
+pub const MAX_QUIESCE_DEPTH: u8 = 4;
 const DEBUG: bool = true;
 const QUIESCE: bool = true;
 
@@ -265,6 +266,9 @@ fn quiesce(board: ArrayBoard, mut alpha: i64, beta: i64, depth: u8) -> (i64, u64
     if val > alpha {
         alpha = val;
     }
+    if depth == MAX_QUIESCE_DEPTH {
+        return (alpha, 1);
+    }
     // let mut best_score = alpha;
     let mut nodes = 1;
     for mv in board.generate_moves() {
@@ -295,7 +299,7 @@ pub fn search(
         // board.pretty_print(false);
         // let init_score = eval(board);
         if QUIESCE {
-            let (quiesce_score, quiesce_nodes) = quiesce(board, alpha, beta, depth);
+            let (quiesce_score, quiesce_nodes) = quiesce(board, alpha, beta, 0);
             // println!("Initial score {init_score} => Quiesced {quiesce_score}");
             // let mut line = String::new();
             // let _res = std::io::stdin().read_line(&mut line);
