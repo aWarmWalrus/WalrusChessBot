@@ -1,4 +1,4 @@
-use super::arrayboard::{is_piece_white, ArrayBoard, BitMove};
+use super::arrayboard::{generate_moves::MOVE_CAPTURE, is_piece_white, ArrayBoard, BitMove};
 use std::cmp;
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
@@ -188,8 +188,9 @@ const MG_TABLE: [[i16; 64]; 12] = initialize_tables(MG_PIECE_VALUES, MG_PESTO);
 const EG_TABLE: [[i16; 64]; 12] = initialize_tables(EG_PIECE_VALUES, EG_PESTO);
 const CHECKMATE: i64 = 100000000;
 
-pub static MAX_DEPTH: AtomicU8 = AtomicU8::new(8);
+pub static MAX_DEPTH: AtomicU8 = AtomicU8::new(7);
 const DEBUG: bool = true;
+const QUIESCE: bool = false;
 
 pub const fn initialize_tables(piece_vals: [i16; 6], pesto: [[i16; 64]; 6]) -> [[i16; 64]; 12] {
     let mut table = [[0; 64]; 12];
@@ -256,6 +257,34 @@ fn eval(board: ArrayBoard) -> i64 {
     (mg_phase * mg_score + eg_phase * eg_score) / 24
 }
 
+fn quiesce(board: ArrayBoard, mut alpha: i64, beta: i64, depth: u8) -> (i64, u64) {
+    let val = eval(board);
+    if val >= beta {
+        return (beta, 1);
+    }
+    if val > alpha {
+        alpha = val;
+    }
+    // let mut best_score = alpha;
+    let mut nodes = 1;
+    for mv in board.generate_moves() {
+        if mv.meta & MOVE_CAPTURE == 0 {
+            continue;
+        }
+        let new_board = board.make_move(&mv);
+        let (q_score, q_nodes) = quiesce(new_board, -beta, -alpha, depth + 1);
+        nodes += q_nodes;
+        if -q_score >= beta {
+            return (beta, nodes);
+        }
+        if -q_score > alpha {
+            alpha = -q_score;
+        }
+    }
+
+    return (alpha, nodes);
+}
+
 pub fn search(
     board: ArrayBoard,
     mut alpha: i64,
@@ -263,7 +292,16 @@ pub fn search(
     depth: u8,
 ) -> (String, i64, Option<i8>, u64) {
     if depth == MAX_DEPTH.load(Ordering::Relaxed) {
-        return ("".to_string(), eval(board), None, 1);
+        // board.pretty_print(false);
+        // let init_score = eval(board);
+        if QUIESCE {
+            let (quiesce_score, quiesce_nodes) = quiesce(board, alpha, beta, depth);
+            // println!("Initial score {init_score} => Quiesced {quiesce_score}");
+            // let mut line = String::new();
+            // let _res = std::io::stdin().read_line(&mut line);
+            return ("".to_string(), quiesce_score, None, quiesce_nodes);
+        }
+        return (String::from(""), eval(board), None, 1);
     }
     let moves = board.generate_moves();
     if moves.len() == 0 {
@@ -273,7 +311,7 @@ pub fn search(
         return ("".to_string(), 0, None, 1);
     }
 
-    let mut nodes = 0;
+    let mut nodes = 1;
     let mut best_mate_in: Option<i8> = None;
     let mut best_pv: String = String::from("");
     let start_time = if depth == 0 {

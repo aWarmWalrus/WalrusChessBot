@@ -71,7 +71,7 @@ pub struct BitMove {
     source_square: u8,
     dest_square: u8,
     promote_to: Option<PieceType>,
-    pub meta: u8,
+    pub meta: u16,
 }
 
 // Private Helper functions
@@ -377,13 +377,30 @@ impl BitMove {
         source_square: u8,
         dest_square: u8,
         promote_to: Option<PieceType>,
-        meta: u8,
+        meta: u16,
     ) -> BitMove {
         BitMove {
             source_square,
             dest_square,
             promote_to,
             meta,
+        }
+    }
+
+    pub fn create_capture(
+        source_square: u8,
+        dest_square: u8,
+        attacker: u16,
+        victim: u16,
+        promote_to: Option<PieceType>,
+        meta: u16,
+    ) -> BitMove {
+        BitMove {
+            source_square,
+            dest_square,
+            promote_to,
+            // Most Valuable Victim / Least Valuable Attacker
+            meta: meta | (victim * 10 - attacker),
         }
     }
 }

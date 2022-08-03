@@ -65,10 +65,10 @@ const PROMOTIONS: [PieceType; 4] = [
 ];
 
 // Move meta bits
-pub const MOVE_CAPTURE: u8 = 0b00001;
-pub const MOVE_CHECK: u8 = 0b00010;
-pub const MOVE_CASTLE: u8 = 0b00100;
-pub const MOVE_PROMO: u8 = 0b01000;
+pub const MOVE_CAPTURE: u16 = 0b0000100000000;
+pub const MOVE_CHECK: u16 = 0b0001000000000;
+pub const MOVE_CASTLE: u16 = 0b0010000000000;
+pub const MOVE_PROMO: u16 = 0b0100000000000;
 
 // Returns the index and a bool. The returned bool is true iff the computed result
 // is out of bounds.
@@ -110,9 +110,11 @@ impl ArrayBoard {
             if dest_piece != 0 && self.is_opponent_piece(dest_piece) {
                 if is_back_rank(dest_index) {
                     for promote_to in PROMOTIONS {
-                        moves.push(BitMove::create(
+                        moves.push(BitMove::create_capture(
                             index,
                             dest_index as u8,
+                            /* attacker= */ promote_to as u16,
+                            /* victim= */ piece_type(dest_piece) as u16,
                             Some(promote_to),
                             MOVE_PROMO | MOVE_CAPTURE,
                         ));
@@ -120,12 +122,26 @@ impl ArrayBoard {
                     continue;
                 }
                 // Pawn takes (non-promotion)
-                moves.push(BitMove::create(index, dest_index as u8, None, MOVE_CAPTURE));
+                moves.push(BitMove::create_capture(
+                    index,
+                    dest_index as u8,
+                    /* attacker= */ PieceType::Pawn as u16,
+                    /* victim= */ piece_type(dest_piece) as u16,
+                    None,
+                    MOVE_CAPTURE,
+                ));
                 continue;
             }
             // En-passant pawn take
             if (dest_index > 0) && (dest_index as u8 == self.get_enpassant()) {
-                moves.push(BitMove::create(index, dest_index as u8, None, MOVE_CAPTURE));
+                moves.push(BitMove::create_capture(
+                    index,
+                    dest_index as u8,
+                    /* attacker= */ PieceType::Pawn as u16,
+                    /* victim= */ piece_type(dest_piece) as u16,
+                    None,
+                    MOVE_CAPTURE,
+                ));
             }
         }
 
@@ -183,7 +199,14 @@ impl ArrayBoard {
             }
             let dest_piece = self.get_piece(dest_index);
             if dest_piece != 0 && self.is_opponent_piece(dest_piece) {
-                moves.push(BitMove::create(index, dest_index as u8, None, MOVE_CAPTURE));
+                moves.push(BitMove::create_capture(
+                    index,
+                    dest_index as u8,
+                    /* attacker= */ piece as u16,
+                    /* victim= */ piece_type(dest_piece) as u16,
+                    None,
+                    MOVE_CAPTURE,
+                ));
             } else if !is_multi_step && dest_piece == 0 {
                 moves.push(BitMove::create(index, dest_index as u8, None, 0))
             }
