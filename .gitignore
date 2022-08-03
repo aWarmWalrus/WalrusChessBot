@@ -4,6 +4,9 @@ __pycache__/
 *$py.class
 *.exe
 
+*.rtbw
+*.rtbz
+
 # C extensions
 *.so
 

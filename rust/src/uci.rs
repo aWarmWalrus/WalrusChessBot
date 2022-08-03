@@ -118,7 +118,7 @@ pub fn run() {
                 match board_opt {
                     Some(b) => {
                         b.pretty_print(true);
-                        b.print_legal_moves(false);
+                        b.print_legal_moves(true);
                     }
                     None => println!("ERROR: No board has been initialized yet. Use 'position'."),
                 };
