@@ -17,6 +17,8 @@ use test::Bencher;
 
 const DO_PERFT: bool = false;
 
+const TEST_CASE_1: &str = "position startpos moves e2e4 c7c5 g1f3 e7e6 d2d4 c5d4 f3d4 b8c6 b1c3 d8c7 d1d3 c6d4 d3d4 c7b6 d4b6 a7b6 c3b5 a8a4 f2f3 f8c5 c2c3 e8f8 b2b3";
+
 fn perft(board: ArrayBoard, max_depth: u32, depth: u32) -> (u32, u32, u32, u32, u32) {
     let (mut nodes, mut captures, mut castles, mut checks, mut promos) = (0, 0, 0, 0, 0);
     if depth == (max_depth - 1) {
