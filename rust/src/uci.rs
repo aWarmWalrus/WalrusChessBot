@@ -11,6 +11,8 @@ fn go(
     board_opt: Option<ArrayBoard>,
     book_moves_opt: &Option<&BookMoves>,
     hist_data: &mut HashMap<ArrayBoard, u8>,
+    wtime: Option<u32>,
+    btime: Option<u32>,
 ) {
     if board_opt.is_none() {
         println!("ERROR: No board has been initialized yet. Use 'position'.");
@@ -21,13 +23,6 @@ fn go(
         match best_move {
             Some(mv) => {
                 println!("bestmove {}", mv);
-                // let bit_move = BitMove::from_string(best_move.unwrap());
-                // let new_board = board_opt.unwrap().make_move(&bit_move);
-                // hist_data.insert(0, board_opt.unwrap());
-                // hist_data.insert(0, new_board);
-                // for b in hist_data {
-                //     b.pretty_print(false);
-                // }
                 return;
             }
             None => println!("DEBUG: out of book moves, need to actually think now"),
@@ -35,6 +30,23 @@ fn go(
     }
 
     let board = board_opt.unwrap();
+    if board.white_to_move() && let Some(time_left) = wtime {
+        if time_left < 30000 {
+            engine::MAX_DEPTH.store(4, Ordering::Relaxed);
+        } else if time_left > 45000 && time_left < 300000 {
+            engine::MAX_DEPTH.store(6, Ordering::Relaxed);
+        } else if time_left > 600000 {
+            engine::MAX_DEPTH.store(7, Ordering::Relaxed);
+        }
+    } else if !board.white_to_move() && let Some(time_left) = btime {
+        if time_left < 30000 {
+            engine::MAX_DEPTH.store(4, Ordering::Relaxed);
+        } else if time_left > 45000 && time_left < 300000 {
+            engine::MAX_DEPTH.store(6, Ordering::Relaxed);
+        } else if time_left > 600000 {
+            engine::MAX_DEPTH.store(7, Ordering::Relaxed);
+        }
+    }
 
     let start = Instant::now();
     let (best, _score, nodes) = engine::search(
@@ -134,7 +146,12 @@ pub fn run() {
                 };
             }
             "go" => {
-                go(board_opt, &book_moves_tracker, &mut hist_data);
+                let (mut wtime, mut btime): (Option<u32>, Option<u32>) = (None, None);
+                if instructions[1] == "wtime" && instructions[3] == "btime" {
+                    wtime = Some(instructions[2].parse::<u32>().unwrap());
+                    btime = Some(instructions[4].parse::<u32>().unwrap());
+                }
+                go(board_opt, &book_moves_tracker, &mut hist_data, wtime, btime);
             }
             "print" => {
                 match board_opt {
