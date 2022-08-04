@@ -21,6 +21,10 @@ const PIECE_TYPE_MASK: u32 = 0b1110;
 const PIECE_SIDE_MASK: u32 = 0b0001;
 const PIECE_TYPE: u32 = 1;
 
+//   - meta[0] = side to move
+//   - meta[1:5] = castles
+//   - meta[5:11] = en passant index
+//   - meta[11] = a king is checked
 const META_SIDE_TO_MOVE: u16 = 0;
 const META_SIDE_TO_MOVE_MASK: u16 = 0b1;
 const META_CASTLE: u16 = 1;
@@ -52,7 +56,7 @@ pub fn piece_type(piece: u32) -> u32 {
 }
 
 // Struct definitions
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, Hash)]
 pub struct ArrayBoard {
     // Represents the board state--each 8-bit entry is a piece. We only need 4 bits to represent
     // each piece, so this represntation does double the amount of space required.
@@ -63,6 +67,12 @@ pub struct ArrayBoard {
     //   - meta[5:11] = en passant index
     //   - meta[11] = a king is checked
     meta: u16,
+}
+
+impl PartialEq for ArrayBoard {
+    fn eq(&self, other: &ArrayBoard) -> bool {
+        other.board == self.board && other.meta == self.meta
+    }
 }
 
 #[allow(dead_code)]
@@ -179,7 +189,7 @@ impl ArrayBoard {
     }
 
     pub fn is_king_checked(&self) -> bool {
-        self.meta & META_KING_CHECK_MASK > 0
+        (self.meta & META_KING_CHECK_MASK) > 0
     }
 
     // MAKE MOVE logic ==============================================
@@ -282,6 +292,8 @@ impl ArrayBoard {
         }
         if bit_move.meta & generate_moves::MOVE_CHECK > 0 {
             new_board.meta |= META_KING_CHECK_MASK;
+        } else {
+            new_board.meta &= !META_KING_CHECK_MASK;
         }
 
         new_board.meta ^= META_SIDE_TO_MOVE_MASK;

@@ -2,11 +2,16 @@ use super::arrayboard::{ArrayBoard, BitMove, STARTING_FEN};
 use super::book_moves::BookMoves;
 use super::engine;
 use std::cmp;
+use std::collections::HashMap;
 use std::io;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-fn go(board_opt: Option<ArrayBoard>, book_moves_opt: &Option<&BookMoves>) {
+fn go(
+    board_opt: Option<ArrayBoard>,
+    book_moves_opt: &Option<&BookMoves>,
+    hist_data: &mut HashMap<ArrayBoard, u8>,
+) {
     if board_opt.is_none() {
         println!("ERROR: No board has been initialized yet. Use 'position'.");
         return;
@@ -16,6 +21,13 @@ fn go(board_opt: Option<ArrayBoard>, book_moves_opt: &Option<&BookMoves>) {
         match best_move {
             Some(mv) => {
                 println!("bestmove {}", mv);
+                // let bit_move = BitMove::from_string(best_move.unwrap());
+                // let new_board = board_opt.unwrap().make_move(&bit_move);
+                // hist_data.insert(0, board_opt.unwrap());
+                // hist_data.insert(0, new_board);
+                // for b in hist_data {
+                //     b.pretty_print(false);
+                // }
                 return;
             }
             None => println!("DEBUG: out of book moves, need to actually think now"),
@@ -25,11 +37,12 @@ fn go(board_opt: Option<ArrayBoard>, book_moves_opt: &Option<&BookMoves>) {
     let board = board_opt.unwrap();
 
     let start = Instant::now();
-    let (best, _score, _mate_in, nodes) = engine::search(
+    let (best, _score, nodes) = engine::search(
         board,
         /* alpha= */ i32::MIN as i64,
         /* beta= */ i32::MAX as i64,
         /* depth=*/ 0,
+        hist_data,
     );
     let tm = start.elapsed().as_millis();
     println!(
@@ -49,6 +62,7 @@ pub fn run() {
     let mut book_moves_tracker: Option<&BookMoves> = Some(&book_moves_root);
 
     let mut board_opt: Option<ArrayBoard> = None;
+    let mut hist_data: HashMap<ArrayBoard, u8> = HashMap::new();
     loop {
         let mut buffer = String::new();
         let result = io::stdin().read_line(&mut buffer);
@@ -82,11 +96,13 @@ pub fn run() {
             }
             "ucinewgame" => {
                 book_moves_tracker = Some(&book_moves_root);
+                hist_data.clear();
             }
             "isready" => {
                 println!("readyok");
             }
             "p" | "position" => {
+                hist_data.clear();
                 book_moves_tracker = Some(&book_moves_root);
                 board_opt = match instructions[1] {
                     "fen" => {
@@ -98,12 +114,18 @@ pub fn run() {
                     "sp" | "startpos" => {
                         let mut nb = ArrayBoard::create_from_fen(STARTING_FEN);
                         if instructions.len() > 3 {
-                            nb = instructions[3..].iter().fold(nb, |board_acc, mv| {
+                            nb = instructions[3..].iter().fold(nb, |old_board, mv| {
                                 book_moves_tracker = match book_moves_tracker {
                                     Some(bm) => bm.get_child(mv),
                                     None => None,
                                 };
-                                board_acc.make_move(&BitMove::from_string(mv))
+                                let new_board = old_board.make_move(&BitMove::from_string(mv));
+                                if hist_data.contains_key(&old_board) {
+                                    *hist_data.get_mut(&old_board).unwrap() += 1;
+                                } else {
+                                    hist_data.insert(old_board, 1);
+                                }
+                                new_board
                             });
                         }
                         Some(nb)
@@ -112,13 +134,13 @@ pub fn run() {
                 };
             }
             "go" => {
-                go(board_opt, &book_moves_tracker);
+                go(board_opt, &book_moves_tracker, &mut hist_data);
             }
             "print" => {
                 match board_opt {
                     Some(b) => {
                         b.pretty_print(true);
-                        b.print_legal_moves(true);
+                        b.print_legal_moves(false);
                     }
                     None => println!("ERROR: No board has been initialized yet. Use 'position'."),
                 };
@@ -126,6 +148,11 @@ pub fn run() {
                     Some(bm) => bm.print_children(),
                     None => (),
                 }
+                println!(
+                    "Size of hist_data: {} {}",
+                    hist_data.len(),
+                    hist_data.keys().len()
+                );
             }
             "exit" | "end" | "quit" => break,
             _ => (),

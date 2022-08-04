@@ -1,5 +1,6 @@
 use super::arrayboard::{generate_moves::MOVE_CAPTURE, is_piece_white, ArrayBoard, BitMove};
 use std::cmp;
+use std::collections::HashMap;
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::time::Instant;
@@ -208,20 +209,22 @@ pub const fn initialize_tables(piece_vals: [i16; 6], pesto: [[i16; 64]; 6]) -> [
     table
 }
 
-fn print_info(score: i64, mate_in: Option<i8>, nodes: u64, start: Instant, pv: &str) {
+fn print_info(score: i64, nodes: u64, start: Instant, pv: &str) {
     if !DEBUG {
         return;
     }
     let time = start.elapsed().as_millis();
     let nps = ((nodes as f64 / time as f64) * 1000.0) as i64;
-    match mate_in {
-        Some(m) => println!(
-            "info depth {MAX_DEPTH:?} time {time} score mate {mi} nodes {nodes} nps {nps} pv {pv}",
-            mi = (m + 1) / 2 * ((score / CHECKMATE) as i8)
-        ),
-        None => {
-            println!("info depth {MAX_DEPTH:?} time {time} score cp {score} nodes {nodes} nps {nps} pv {pv}")
-        }
+    if score.abs() > (CHECKMATE - 10) {
+        let mate_in = CHECKMATE - score.abs();
+        println!(
+            "info depth {MAX_DEPTH:?} time {time} score mate {} nodes {nodes} nps {nps} pv {pv}",
+            (mate_in + 1) / 2 * score.signum()
+        );
+    } else {
+        println!(
+            "info depth {MAX_DEPTH:?} time {time} score cp {score} nodes {nodes} nps {nps} pv {pv}"
+        );
     }
 }
 
@@ -289,34 +292,60 @@ fn quiesce(board: ArrayBoard, mut alpha: i64, beta: i64, depth: u8) -> (i64, u64
     return (alpha, nodes);
 }
 
+fn increment_board_hist(board: ArrayBoard, hist_data: &mut HashMap<ArrayBoard, u8>) -> u8 {
+    match hist_data.get_mut(&board) {
+        Some(count) => {
+            *count += 1;
+            *count
+        }
+        None => {
+            hist_data.insert(board, 1);
+            1
+        }
+    }
+}
+
+fn decrement_board_hist(board: &ArrayBoard, hist_data: &mut HashMap<ArrayBoard, u8>) {
+    let c = hist_data.get_mut(board).unwrap();
+    if *c == 0 {
+        hist_data.remove(board);
+    } else {
+        *c -= 1;
+    }
+}
+
 pub fn search(
     board: ArrayBoard,
     mut alpha: i64,
     beta: i64,
     depth: u8,
-) -> (String, i64, Option<i8>, u64) {
+    hist_data: &mut HashMap<ArrayBoard, u8>,
+) -> (String, i64, u64) {
     if depth == MAX_DEPTH.load(Ordering::Relaxed) {
-        // board.pretty_print(false);
-        // let init_score = eval(board);
         if QUIESCE {
             let (quiesce_score, quiesce_nodes) = quiesce(board, alpha, beta, 0);
-            // println!("Initial score {init_score} => Quiesced {quiesce_score}");
-            // let mut line = String::new();
-            // let _res = std::io::stdin().read_line(&mut line);
-            return ("".to_string(), quiesce_score, None, quiesce_nodes);
+            return ("".to_string(), quiesce_score, quiesce_nodes);
         }
-        return (String::from(""), eval(board), None, 1);
+        return (String::from(""), eval(board), 1);
     }
     let moves = board.generate_moves();
     if moves.len() == 0 {
         if board.is_king_checked() {
-            return ("".to_string(), -CHECKMATE, Some(1), 1);
+            // let mut line = String::new();
+            // let _res = std::io::stdin().read_line(&mut line);
+            return ("".to_string(), -CHECKMATE + depth as i64, 1);
         }
-        return ("".to_string(), 0, None, 1);
+        // println!("{}<< STALEMATE", "  ".repeat(depth as usize));
+        return ("".to_string(), 0, 1);
+    }
+    let reps = increment_board_hist(board, hist_data);
+    // 3-fold stalemate.
+    if reps >= 3 {
+        decrement_board_hist(&board, hist_data);
+        return ("".to_string(), 0, 1);
     }
 
     let mut nodes = 1;
-    let mut best_mate_in: Option<i8> = None;
     let mut best_pv: String = String::from("");
     let start_time = if depth == 0 {
         Some(Instant::now())
@@ -329,50 +358,21 @@ pub fn search(
             println!("info currmove {} currmovenumber {i}", mv.to_string());
         }
         let new_board = board.make_move(&mv);
-        let (pv, score, mate_in, child_nodes) = search(new_board, -beta, -alpha, depth + 1);
+        let (pv, score, child_nodes) = search(new_board, -beta, -alpha, depth + 1, hist_data);
         nodes += child_nodes;
 
         if -score >= beta {
-            return (
-                mv.to_string() + " " + &pv,
-                beta,
-                match best_mate_in {
-                    None => None,
-                    Some(m) => Some(m + 1),
-                },
-                nodes,
-            );
+            decrement_board_hist(&board, hist_data);
+            return (mv.to_string() + " " + &pv, beta, nodes);
         }
         if -score > alpha {
             alpha = -score;
-            best_mate_in = mate_in;
             best_pv = mv.to_string() + " " + &pv.to_string();
             if depth == 0 {
-                print_info(-score, mate_in, nodes, start_time.unwrap(), &best_pv);
-            }
-        } else if score == -CHECKMATE &&
-                let Some(bm) = best_mate_in &&
-                let Some(m) = mate_in &&
-                m < bm {
-            // println!("{}{} Found a better CHECKMATE best_mate_in {best_mate_in:?}  mate_in: {m}  score: {score} {:?}",
-            // "  ".repeat(depth as usize), if board.white_to_move() { "W" } else {"B"}, mate_in);
-            // let mut buffer = String::new();
-            // io::stdin().read_line(&mut buffer).ok();
-            alpha = -score;
-            best_mate_in = mate_in;
-            best_pv = mv.to_string() + " " + &pv.to_string();
-            if depth == 0 {
-                print_info(-score, mate_in, nodes, start_time.unwrap(), &best_pv);
+                print_info(-score, nodes, start_time.unwrap(), &best_pv);
             }
         }
     }
-    (
-        best_pv,
-        alpha,
-        match best_mate_in {
-            None => None,
-            Some(m) => Some(m + 1),
-        },
-        nodes,
-    )
+    decrement_board_hist(&board, hist_data);
+    (best_pv, alpha, nodes)
 }
