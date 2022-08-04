@@ -147,7 +147,10 @@ pub fn run() {
             }
             "go" => {
                 let (mut wtime, mut btime): (Option<u32>, Option<u32>) = (None, None);
-                if instructions[1] == "wtime" && instructions[3] == "btime" {
+                if instructions.len() >= 5
+                    && instructions[1] == "wtime"
+                    && instructions[3] == "btime"
+                {
                     wtime = Some(instructions[2].parse::<u32>().unwrap());
                     btime = Some(instructions[4].parse::<u32>().unwrap());
                 }
@@ -165,11 +168,6 @@ pub fn run() {
                     Some(bm) => bm.print_children(),
                     None => (),
                 }
-                println!(
-                    "Size of hist_data: {} {}",
-                    hist_data.len(),
-                    hist_data.keys().len()
-                );
             }
             "exit" | "end" | "quit" => break,
             _ => (),

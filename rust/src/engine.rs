@@ -256,7 +256,7 @@ fn eval(board: ArrayBoard) -> i64 {
     };
     // Tapered eval: as the game approaches endgame, weigh the end game evaluation more heavily.
     // Endgame is decided based on number of minor pieces remaining.
-    let mg_phase = cmp::max(game_phase, 24);
+    let mg_phase = cmp::min(game_phase, 24);
     let eg_phase = 24 - mg_phase;
     (mg_phase * mg_score + eg_phase * eg_score) / 24
 }
