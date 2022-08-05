@@ -33,7 +33,7 @@ fn go(
     if board.white_to_move() && let Some(time_left) = wtime {
         if time_left < 30000 {
             engine::MAX_DEPTH.store(4, Ordering::Relaxed);
-        } else if time_left > 45000 && time_left < 300000 {
+        } else if time_left > 45000 && time_left < 360000 {
             engine::MAX_DEPTH.store(6, Ordering::Relaxed);
         } else if time_left > 600000 {
             engine::MAX_DEPTH.store(7, Ordering::Relaxed);
@@ -41,7 +41,7 @@ fn go(
     } else if !board.white_to_move() && let Some(time_left) = btime {
         if time_left < 30000 {
             engine::MAX_DEPTH.store(4, Ordering::Relaxed);
-        } else if time_left > 45000 && time_left < 300000 {
+        } else if time_left > 45000 && time_left < 360000 {
             engine::MAX_DEPTH.store(6, Ordering::Relaxed);
         } else if time_left > 600000 {
             engine::MAX_DEPTH.store(7, Ordering::Relaxed);
