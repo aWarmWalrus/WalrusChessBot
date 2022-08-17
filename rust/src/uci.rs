@@ -68,8 +68,6 @@ fn go(
     if !best.is_empty() {
         println!("bestmove {}", best.split_whitespace().nth(0).unwrap());
     }
-        // board.pretty_print(true);
-        // println!("ERROR: no moves possible");
 }
 
 pub fn run() {
