@@ -341,6 +341,11 @@ pub fn search(
     // 3-fold stalemate.
     if reps >= 3 {
         decrement_board_hist(&board, hist_data);
+        // It's a stalemate. For some reason, lichess sends us one last 'go' command, so just
+        // return the first move we have.
+        if moves.len() > 0 {
+            return (moves[0].to_string(), 0, 1);
+        }
         return ("".to_string(), 0, 1);
     }
 
