@@ -1,4 +1,6 @@
-use super::arrayboard::{generate_moves::MOVE_CAPTURE, is_piece_white, ArrayBoard, BitMove};
+use crate::arrayboard::{generate_moves::MOVE_CAPTURE, is_piece_white, ArrayBoard};
+use crate::chessboard::ChessBoard;
+use crate::moves::BitMove;
 use std::cmp;
 use std::collections::HashMap;
 use std::io;
@@ -228,7 +230,7 @@ fn print_info(score: i64, nodes: u64, start: Instant, pv: &str) {
     }
 }
 
-fn eval(board: ArrayBoard) -> i64 {
+fn eval(board: &impl ChessBoard) -> i64 {
     let mut game_phase = 0;
     let mut w_mg = 0;
     let mut b_mg = 0;
@@ -261,7 +263,7 @@ fn eval(board: ArrayBoard) -> i64 {
     (mg_phase * mg_score + eg_phase * eg_score) / 24
 }
 
-fn quiesce(board: ArrayBoard, mut alpha: i64, beta: i64, depth: u8) -> (i64, u64) {
+fn quiesce(board: &mut impl ChessBoard, mut alpha: i64, beta: i64, depth: u8) -> (i64, u64) {
     let val = eval(board);
     if val >= beta {
         return (beta, 1);
@@ -277,8 +279,9 @@ fn quiesce(board: ArrayBoard, mut alpha: i64, beta: i64, depth: u8) -> (i64, u64
         if mv.meta & MOVE_CAPTURE == 0 {
             continue;
         }
-        let new_board = board.make_move(&mv);
-        let (q_score, q_nodes) = quiesce(new_board, -beta, -alpha, depth + 1);
+        board.make_move(&mv);
+        let (q_score, q_nodes) = quiesce(board, -beta, -alpha, depth + 1);
+        board.take_back_move(&mv);
         nodes += q_nodes;
         if -q_score >= beta {
             return (beta, nodes);
@@ -291,34 +294,34 @@ fn quiesce(board: ArrayBoard, mut alpha: i64, beta: i64, depth: u8) -> (i64, u64
     return (alpha, nodes);
 }
 
-fn increment_board_hist(board: ArrayBoard, hist_data: &mut HashMap<ArrayBoard, u8>) -> u8 {
-    match hist_data.get_mut(&board) {
+fn increment_board_hist(hash: u64, hist_data: &mut HashMap<u64, u8>) -> u8 {
+    match hist_data.get_mut(&hash) {
         Some(count) => {
             *count += 1;
             *count
         }
         None => {
-            hist_data.insert(board, 1);
+            hist_data.insert(hash, 1);
             1
         }
     }
 }
 
-fn decrement_board_hist(board: &ArrayBoard, hist_data: &mut HashMap<ArrayBoard, u8>) {
-    let c = hist_data.get_mut(board).unwrap();
+fn decrement_board_hist(hash: u64, hist_data: &mut HashMap<u64, u8>) {
+    let c = hist_data.get_mut(&hash).unwrap();
     if *c == 0 {
-        hist_data.remove(board);
+        hist_data.remove(&hash);
     } else {
         *c -= 1;
     }
 }
 
 pub fn search(
-    board: ArrayBoard,
+    board: &mut impl ChessBoard,
     mut alpha: i64,
     beta: i64,
     depth: u8,
-    hist_data: &mut HashMap<ArrayBoard, u8>,
+    hist_data: &mut HashMap<u64, u8>,
 ) -> (String, i64, u64) {
     if depth == MAX_DEPTH.load(Ordering::Relaxed) {
         if QUIESCE {
@@ -337,10 +340,11 @@ pub fn search(
         // println!("{}<< STALEMATE", "  ".repeat(depth as usize));
         return ("".to_string(), 0, 1);
     }
-    let reps = increment_board_hist(board, hist_data);
+    let hash = board.hash();
+    let reps = increment_board_hist(hash, hist_data);
     // 3-fold stalemate.
     if reps >= 3 {
-        decrement_board_hist(&board, hist_data);
+        decrement_board_hist(hash, hist_data);
         return ("".to_string(), 0, 1);
     }
 
@@ -356,12 +360,13 @@ pub fn search(
         if depth == 0 {
             println!("info currmove {} currmovenumber {i}", mv.to_string());
         }
-        let new_board = board.make_move(&mv);
-        let (pv, score, child_nodes) = search(new_board, -beta, -alpha, depth + 1, hist_data);
+        board.make_move(&mv);
+        let (pv, score, child_nodes) = search(board, -beta, -alpha, depth + 1, hist_data);
+        board.take_back_move(&mv);
         nodes += child_nodes;
 
         if -score >= beta {
-            decrement_board_hist(&board, hist_data);
+            decrement_board_hist(hash, hist_data);
             return (mv.to_string() + " " + &pv, beta, nodes);
         }
         if -score > alpha {
@@ -372,6 +377,6 @@ pub fn search(
             }
         }
     }
-    decrement_board_hist(&board, hist_data);
+    decrement_board_hist(hash, hist_data);
     (best_pv, alpha, nodes)
 }

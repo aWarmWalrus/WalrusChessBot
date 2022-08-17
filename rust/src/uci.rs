@@ -1,6 +1,8 @@
-use super::arrayboard::{ArrayBoard, BitMove, STARTING_FEN};
-use super::book_moves::BookMoves;
-use super::engine;
+use crate::arrayboard::{ArrayBoard, STARTING_FEN};
+use crate::book_moves::BookMoves;
+use crate::chessboard::ChessBoard;
+use crate::engine;
+use crate::moves::BitMove;
 use std::cmp;
 use std::collections::HashMap;
 use std::io;
@@ -8,16 +10,12 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 fn go(
-    board_opt: Option<ArrayBoard>,
+    board: &mut impl ChessBoard,
     book_moves_opt: &Option<&BookMoves>,
-    hist_data: &mut HashMap<ArrayBoard, u8>,
+    hist_data: &mut HashMap<u64, u8>,
     wtime: Option<u32>,
     btime: Option<u32>,
 ) {
-    if board_opt.is_none() {
-        println!("ERROR: No board has been initialized yet. Use 'position'.");
-        return;
-    }
     if let Some(book_moves) = book_moves_opt {
         let best_move = book_moves.pick_weighted_random();
         match best_move {
@@ -29,7 +27,6 @@ fn go(
         }
     }
 
-    let board = board_opt.unwrap();
     if board.white_to_move() && let Some(time_left) = wtime {
         if time_left < 30000 {
             engine::MAX_DEPTH.store(4, Ordering::Relaxed);
@@ -74,7 +71,7 @@ pub fn run() {
     let mut book_moves_tracker: Option<&BookMoves> = Some(&book_moves_root);
 
     let mut board_opt: Option<ArrayBoard> = None;
-    let mut hist_data: HashMap<ArrayBoard, u8> = HashMap::new();
+    let mut hist_data: HashMap<u64, u8> = HashMap::new();
     loop {
         let mut buffer = String::new();
         let result = io::stdin().read_line(&mut buffer);
@@ -124,23 +121,23 @@ pub fn run() {
                         ))
                     }
                     "sp" | "startpos" => {
-                        let mut nb = ArrayBoard::create_from_fen(STARTING_FEN);
+                        let mut board = ArrayBoard::create_from_fen(STARTING_FEN);
                         if instructions.len() > 3 {
-                            nb = instructions[3..].iter().fold(nb, |old_board, mv| {
+                            instructions[3..].iter().for_each(|mv| {
                                 book_moves_tracker = match book_moves_tracker {
                                     Some(bm) => bm.get_child(mv),
                                     None => None,
                                 };
-                                let new_board = old_board.make_move(&BitMove::from_string(mv));
-                                if hist_data.contains_key(&old_board) {
-                                    *hist_data.get_mut(&old_board).unwrap() += 1;
+                                board.make_move(&BitMove::from_string(mv));
+                                let hash = board.hash();
+                                if hist_data.contains_key(&hash) {
+                                    *hist_data.get_mut(&hash).unwrap() += 1;
                                 } else {
-                                    hist_data.insert(old_board, 1);
+                                    hist_data.insert(hash, 1);
                                 }
-                                new_board
                             });
                         }
-                        Some(nb)
+                        Some(board)
                     }
                     _ => None,
                 };
@@ -154,7 +151,17 @@ pub fn run() {
                     wtime = Some(instructions[2].parse::<u32>().unwrap());
                     btime = Some(instructions[4].parse::<u32>().unwrap());
                 }
-                go(board_opt, &book_moves_tracker, &mut hist_data, wtime, btime);
+                if board_opt.is_none() {
+                    println!("ERROR: No board has been initialized yet. Use 'position'.");
+                    return;
+                }
+                go(
+                    &mut board_opt.unwrap(),
+                    &book_moves_tracker,
+                    &mut hist_data,
+                    wtime,
+                    btime,
+                );
             }
             "print" => {
                 match board_opt {
