@@ -31,19 +31,23 @@ fn go(
 
     let board = board_opt.unwrap();
     if board.white_to_move() && let Some(time_left) = wtime {
-        if time_left < 30000 {
+        if time_left <= 30000 {
             engine::MAX_DEPTH.store(4, Ordering::Relaxed);
-        } else if time_left > 45000 && time_left < 360000 {
+        } else if time_left <= 60000 {
+            engine::MAX_DEPTH.store(5, Ordering::Relaxed);
+        } else if time_left <= 300000 {
             engine::MAX_DEPTH.store(6, Ordering::Relaxed);
-        } else if time_left > 600000 {
+        } else {
             engine::MAX_DEPTH.store(7, Ordering::Relaxed);
         }
     } else if !board.white_to_move() && let Some(time_left) = btime {
-        if time_left < 30000 {
+        if time_left <= 30000 {
             engine::MAX_DEPTH.store(4, Ordering::Relaxed);
-        } else if time_left > 45000 && time_left < 360000 {
+        } else if time_left <= 60000 {
+            engine::MAX_DEPTH.store(5, Ordering::Relaxed);
+        } else if time_left <= 300000 {
             engine::MAX_DEPTH.store(6, Ordering::Relaxed);
-        } else if time_left > 600000 {
+        } else {
             engine::MAX_DEPTH.store(7, Ordering::Relaxed);
         }
     }
@@ -61,10 +65,7 @@ fn go(
         "info nodes {nodes} time {tm} nps {}",
         (nodes as f64 / (tm as f64 / 1000.0)) as u64
     );
-    if best.is_empty() {
-        board.pretty_print(true);
-        println!("ERROR: no moves possible");
-    } else {
+    if !best.is_empty() {
         println!("bestmove {}", best.split_whitespace().nth(0).unwrap());
     }
 }
