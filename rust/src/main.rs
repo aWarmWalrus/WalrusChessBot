@@ -7,14 +7,11 @@ extern crate num_derive;
 
 mod arrayboard;
 mod book_moves;
-mod chessboard;
 mod engine;
-mod moves;
 mod uci;
 
 use arrayboard::ArrayBoard;
-use chessboard::ChessBoard;
-use moves::BitMove;
+use arrayboard::BitMove;
 use std::time::Instant;
 use test::Bencher;
 
@@ -22,7 +19,7 @@ const DO_PERFT: bool = false;
 
 const _TEST_CASE_1: &str = "position startpos moves e2e4 c7c5 g1f3 e7e6 d2d4 c5d4 f3d4 b8c6 b1c3 d8c7 d1d3 c6d4 d3d4 c7b6 d4b6 a7b6 c3b5 a8a4 f2f3 f8c5 c2c3 e8f8 b2b3";
 
-fn perft(board: &mut impl ChessBoard, max_depth: u32, depth: u32) -> (u32, u32, u32, u32, u32) {
+fn perft(board: ArrayBoard, max_depth: u32, depth: u32) -> (u32, u32, u32, u32, u32) {
     let (mut nodes, mut captures, mut castles, mut checks, mut promos) = (0, 0, 0, 0, 0);
     if depth == (max_depth - 1) {
         for mv in board.generate_moves() {
@@ -43,11 +40,10 @@ fn perft(board: &mut impl ChessBoard, max_depth: u32, depth: u32) -> (u32, u32, 
         return (nodes, captures, castles, checks, promos);
     }
     for mv in board.generate_moves() {
-        board.make_move(&mv);
+        let new_board = board.make_move(&mv);
         // println!("{}", &mv.to_string());
         // new_board.pretty_print(true);
-        let (n, c1, c2, c3, p) = perft(board, max_depth, depth + 1);
-        board.take_back_move(&mv);
+        let (n, c1, c2, c3, p) = perft(new_board, max_depth, depth + 1);
         nodes += n;
         captures += c1;
         castles += c2;
@@ -59,10 +55,10 @@ fn perft(board: &mut impl ChessBoard, max_depth: u32, depth: u32) -> (u32, u32, 
 
 fn main() {
     if DO_PERFT {
-        let mut board = ArrayBoard::create_from_fen(arrayboard::PERFT2_FEN);
+        let board = ArrayBoard::create_from_fen(arrayboard::PERFT2_FEN);
         let start = Instant::now();
         let depth = 5;
-        let (nodes, captures, castles, checks, promos) = perft(&mut board, depth, 0);
+        let (nodes, captures, castles, checks, promos) = perft(board, depth, 0);
         let tm = start.elapsed().as_secs();
         println!(
             "Perft({depth}) results: \n    \
@@ -100,7 +96,7 @@ fn init_startpos_50_moves(b: &mut Bencher) {
     b.iter(|| {
         let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
         for mv in moves50.clone() {
-            board.make_move(&BitMove::from_string(mv));
+            board = board.make_move(&BitMove::from_string(mv));
         }
     });
 }
@@ -112,7 +108,7 @@ fn init_startpos_100_moves(b: &mut Bencher) {
     b.iter(|| {
         let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
         for mv in moves100.clone() {
-            board.make_move(&BitMove::from_string(mv));
+            board = board.make_move(&BitMove::from_string(mv));
         }
     });
 }
@@ -120,7 +116,7 @@ fn init_startpos_100_moves(b: &mut Bencher) {
 #[bench]
 fn perft_depth_3(b: &mut Bencher) {
     b.iter(|| {
-        let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
-        perft(&mut board, 3, 0);
+        let board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
+        perft(board, 3, 0);
     });
 }

@@ -1,5 +1,4 @@
 use super::*;
-use crate::chessboard::ChessBoard;
 
 const EMPTY: [(i8, i8); 8] = [
     (0, 0),
@@ -215,7 +214,7 @@ impl ArrayBoard {
         moves
     }
 
-    pub fn legal_moves_for_piece(&self, piece: u32, index: u8) -> Vec<BitMove> {
+    fn legal_moves_for_piece(&self, piece: u32, index: u8) -> Vec<BitMove> {
         match num::FromPrimitive::from_u32(piece) {
             Some(PieceType::Pawn) => self.legal_moves_for_pawn(index),
             Some(piece_type) => self.legal_moves_general(piece_type, index),
@@ -257,7 +256,7 @@ impl ArrayBoard {
         false
     }
 
-    pub fn is_square_attacked(&self, index: u32, by_white: bool) -> bool {
+    fn is_square_attacked(&self, index: u32, by_white: bool) -> bool {
         let forward = if by_white { 1 } else { -1 };
         // println!("checking index: {}", index);
         for diag in [(forward, 1), (forward, -1)] {
@@ -275,7 +274,7 @@ impl ArrayBoard {
         })
     }
 
-    pub fn legal_castle_moves(&self) -> Vec<BitMove> {
+    fn legal_castle_moves(&self) -> Vec<BitMove> {
         let mut moves = Vec::new();
         for shift in 0..2 {
             let mask = 1 << (META_CASTLE + shift + if self.white_to_move() { 2 } else { 0 });
@@ -332,27 +331,51 @@ impl ArrayBoard {
         moves
     }
 
-    // pub fn filter_king_checks(&self, moves: Vec<BitMove>) -> Vec<BitMove> {
-    //     let mut new_moves: Vec<BitMove> = Vec::new();
-    //     for mv in moves {
-    //         let new_board = self.make_move(&mv);
-    //         let our_king = piece_to_bits(PieceType::King, self.side_to_move());
-    //         let our_king_ind = new_board.find_piece(our_king);
-    //         if new_board.is_square_attacked(our_king_ind, !self.white_to_move()) {
-    //             // filter out moves that leave / put our king in check
-    //             continue;
-    //         }
-    //         let other_king = our_king ^ PIECE_SIDE_MASK as u8;
-    //         let other_king_ind = new_board.find_piece(other_king as u8);
-    //         if new_board.is_square_attacked(other_king_ind, self.white_to_move()) {
-    //             new_moves.push(BitMove {
-    //                 meta: mv.meta | MOVE_CHECK,
-    //                 ..mv
-    //             });
-    //         } else {
-    //             new_moves.push(mv);
-    //         }
-    //     }
-    //     new_moves
-    // }
+    fn is_king_safe_after_move(&self, mv: &BitMove) -> bool {
+        let new_board = self.make_move(mv);
+        let king = piece_to_bits(PieceType::King, self.side_to_move());
+        let king_index = new_board.find_piece(king);
+
+        !new_board.is_square_attacked(king_index, !self.white_to_move())
+    }
+
+    fn filter_king_checks(&self, moves: Vec<BitMove>) -> Vec<BitMove> {
+        let mut new_moves: Vec<BitMove> = Vec::new();
+        for mv in moves {
+            let new_board = self.make_move(&mv);
+            let our_king = piece_to_bits(PieceType::King, self.side_to_move());
+            let our_king_ind = new_board.find_piece(our_king);
+            if new_board.is_square_attacked(our_king_ind, !self.white_to_move()) {
+                // filter out moves that leave / put our king in check
+                continue;
+            }
+            let other_king = our_king ^ PIECE_SIDE_MASK as u8;
+            let other_king_ind = new_board.find_piece(other_king as u8);
+            if new_board.is_square_attacked(other_king_ind, self.white_to_move()) {
+                new_moves.push(BitMove {
+                    meta: mv.meta | MOVE_CHECK,
+                    ..mv
+                });
+            } else {
+                new_moves.push(mv);
+            }
+        }
+        new_moves
+    }
+
+    pub fn generate_moves(&self) -> Vec<BitMove> {
+        let mut moves: Vec<BitMove> = Vec::new();
+        for i in 0..64 {
+            let piece = self.get_piece(i);
+            if piece == 0 || self.is_opponent_piece(piece) {
+                continue;
+            }
+            moves.append(&mut self.legal_moves_for_piece(piece_type(piece), i as u8));
+        }
+        moves.append(&mut self.legal_castle_moves());
+        moves = self.filter_king_checks(moves);
+        // Reverse sort--higher meta is prioritized.
+        moves.sort_unstable_by(|&mv1, &mv2| mv2.meta.cmp(&mv1.meta));
+        moves
+    }
 }

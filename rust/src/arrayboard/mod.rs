@@ -7,9 +7,6 @@ piece type.
 #![allow(dead_code)]
 pub mod generate_moves;
 
-use crate::chessboard::ChessBoard;
-use crate::moves::BitMove;
-
 // Constants and Enums
 const BOARD_SIZE: u32 = 8;
 const PIECE_SIZE: u32 = 4;
@@ -78,6 +75,15 @@ impl PartialEq for ArrayBoard {
     }
 }
 
+#[allow(dead_code)]
+#[derive(Copy, Clone)]
+pub struct BitMove {
+    source_square: u8,
+    dest_square: u8,
+    promote_to: Option<PieceType>,
+    pub meta: u16,
+}
+
 // Private Helper functions
 fn char_to_piece(piece: char) -> u32 {
     match piece.to_ascii_lowercase() {
@@ -103,13 +109,13 @@ fn piece_to_char(piece: u32, if_none: &str) -> &str {
     }
 }
 
-pub fn algebraic_to_index(alg: &str) -> u16 {
+fn algebraic_to_index(alg: &str) -> u16 {
     let col = (alg.bytes().nth(0).unwrap() - ('a' as u8)) as u16;
     let row = alg.chars().nth(1).unwrap().to_digit(10).unwrap() as u16;
     (BOARD_SIZE as u16) * (8 - row) + col
 }
 
-pub fn index_to_algebraic(index: u32) -> String {
+fn index_to_algebraic(index: u32) -> String {
     let file = (('a' as u8) + (index % BOARD_SIZE) as u8) as char;
     let rank = 8 - (index / BOARD_SIZE);
     String::from(file) + &rank.to_string()
@@ -125,7 +131,51 @@ fn piece_to_bits(piece: PieceType, side: u8) -> u8 {
 
 // Struct implementations
 impl ArrayBoard {
+    // Static factory method
+    pub fn create_from_fen(fen: &str) -> ArrayBoard {
+        let fen_arr: Vec<&str> = fen.split(' ').collect();
+        let mut board: [u8; 64] = [0; 64];
+        let mut index: usize = 0;
+        for fen_row in fen_arr[0].split('/') {
+            for c in fen_row.chars() {
+                if c.is_digit(10) {
+                    index += c.to_digit(10).unwrap() as usize;
+                    continue;
+                }
+                let player = if c.is_lowercase() { 0 } else { 1 };
+                board[index] = (player | (char_to_piece(c) << PIECE_TYPE)) as u8;
+                index += 1;
+            }
+        }
+        // META: Side to play
+        let mut meta = 0;
+        if fen_arr[1].starts_with('w') {
+            meta |= 1
+        }
+        // META: Castles
+        for c in fen_arr[2].chars() {
+            // HACK ALERT: Start one bit over since sideToMove bit is bit 0
+            let ind = match c {
+                'k' => 0b00010,
+                'q' => 0b00100,
+                'K' => 0b01000,
+                'Q' => 0b10000,
+                _ => 0,
+            };
+            meta |= ind;
+        }
+        // META: En Passant
+        if !fen_arr[3].eq_ignore_ascii_case("-") {
+            meta |= algebraic_to_index(fen_arr[3]) << 4;
+        }
+        ArrayBoard { board, meta }
+    }
+
     // Getters ======================================================
+    pub fn white_to_move(&self) -> bool {
+        (self.meta & PIECE_SIDE_MASK as u16) == 1
+    }
+
     fn side_to_move(&self) -> u8 {
         (self.meta & PIECE_SIDE_MASK as u16) as u8
     }
@@ -138,7 +188,15 @@ impl ArrayBoard {
         (self.meta & META_SIDE_TO_MOVE_MASK == 0) != (PIECE_SIDE_MASK & piece == 0)
     }
 
+    pub fn is_king_checked(&self) -> bool {
+        (self.meta & META_KING_CHECK_MASK) > 0
+    }
+
     // MAKE MOVE logic ==============================================
+    pub fn get_piece(&self, index: usize) -> u32 {
+        self.board[index] as u32
+    }
+
     fn remove_piece(&mut self, index: usize) {
         self.board[index] = 0;
     }
@@ -196,81 +254,7 @@ impl ArrayBoard {
         }
     }
 
-    // DEBUGGING AND PRINTING FUNCTIONS ===================================
-    pub fn print_legal_moves(&self, verbose: bool) {
-        print!("Legal moves: ");
-        if verbose {
-            println!();
-        }
-        for m in self.generate_moves() {
-            if verbose {
-                println!("{} ({:b})", m.to_string(), m.meta);
-                continue;
-            }
-            print!("{}, ", m.to_string());
-        }
-        println!("");
-    }
-}
-
-impl ChessBoard for ArrayBoard {
-    fn get_piece(&self, index: usize) -> u32 {
-        self.board[index] as u32
-    }
-
-    fn white_to_move(&self) -> bool {
-        (self.meta & PIECE_SIDE_MASK as u16) == 1
-    }
-
-    fn is_king_checked(&self) -> bool {
-        (self.meta & META_KING_CHECK_MASK) > 0
-    }
-
-    fn hash(&self) -> u64 {
-        0
-    }
-
-    // Static factory method
-    fn create_from_fen(fen: &str) -> ArrayBoard {
-        let fen_arr: Vec<&str> = fen.split(' ').collect();
-        let mut board: [u8; 64] = [0; 64];
-        let mut index: usize = 0;
-        for fen_row in fen_arr[0].split('/') {
-            for c in fen_row.chars() {
-                if c.is_digit(10) {
-                    index += c.to_digit(10).unwrap() as usize;
-                    continue;
-                }
-                let player = if c.is_lowercase() { 0 } else { 1 };
-                board[index] = (player | (char_to_piece(c) << PIECE_TYPE)) as u8;
-                index += 1;
-            }
-        }
-        // META: Side to play
-        let mut meta = 0;
-        if fen_arr[1].starts_with('w') {
-            meta |= 1
-        }
-        // META: Castles
-        for c in fen_arr[2].chars() {
-            // HACK ALERT: Start one bit over since sideToMove bit is bit 0
-            let ind = match c {
-                'k' => 0b00010,
-                'q' => 0b00100,
-                'K' => 0b01000,
-                'Q' => 0b10000,
-                _ => 0,
-            };
-            meta |= ind;
-        }
-        // META: En Passant
-        if !fen_arr[3].eq_ignore_ascii_case("-") {
-            meta |= algebraic_to_index(fen_arr[3]) << 4;
-        }
-        ArrayBoard { board, meta }
-    }
-
-    fn make_move(&mut self, bit_move: &BitMove) {
+    pub fn make_move(&self, bit_move: &BitMove) -> ArrayBoard {
         let mut new_board = self.clone();
 
         let source_piece = self.get_piece(bit_move.source_square as usize);
@@ -315,31 +299,11 @@ impl ChessBoard for ArrayBoard {
         new_board.meta ^= META_SIDE_TO_MOVE_MASK;
         new_board.remove_piece(bit_move.source_square as usize);
         new_board.add_piece(bit_move.dest_square as usize, end_piece as u8);
-        // XXX FIX THIS
-        // new_board
+        new_board
     }
 
-    fn take_back_move(&mut self, _mv: &BitMove) {
-        ()
-    }
-
-    fn generate_moves(&self) -> Vec<BitMove> {
-        let mut moves: Vec<BitMove> = Vec::new();
-        for i in 0..64 {
-            let piece = self.get_piece(i);
-            if piece == 0 || self.is_opponent_piece(piece) {
-                continue;
-            }
-            moves.append(&mut self.legal_moves_for_piece(piece_type(piece), i as u8));
-        }
-        moves.append(&mut self.legal_castle_moves());
-        // moves = self.filter_king_checks(moves);
-        // Reverse sort--higher meta is prioritized.
-        moves.sort_unstable_by(|&mv1, &mv2| mv2.meta.cmp(&mv1.meta));
-        moves
-    }
-
-    fn pretty_print(&self, verbose: bool) {
+    // DEBUGGING AND PRINTING FUNCTIONS ===================================
+    pub fn pretty_print(&self, verbose: bool) {
         if verbose {
             println!(" ---------------- BOARD STATE ----------------- ");
             println!("  Board metadata in binary:");
@@ -371,6 +335,84 @@ impl ChessBoard for ArrayBoard {
             if i % BOARD_SIZE == 7 {
                 println!("|");
             }
+        }
+    }
+
+    pub fn print_legal_moves(&self, verbose: bool) {
+        print!("Legal moves: ");
+        if verbose {
+            println!();
+        }
+        for m in self.generate_moves() {
+            if verbose {
+                println!("{} ({:b})", m.to_string(), m.meta);
+                continue;
+            }
+            print!("{}, ", m.to_string());
+        }
+        println!("");
+    }
+}
+
+impl BitMove {
+    pub fn from_string(mv: &str) -> BitMove {
+        let source_square = algebraic_to_index(&mv[..2]) as u8;
+        let dest_square = algebraic_to_index(&mv[2..4]) as u8;
+        let promote_to = match mv.chars().nth(4) {
+            Some('q') => Some(PieceType::Queen),
+            Some('r') => Some(PieceType::Rook),
+            Some('b') => Some(PieceType::Bishop),
+            Some('n') => Some(PieceType::Knight),
+            _ => None,
+        };
+        BitMove {
+            source_square,
+            dest_square,
+            promote_to,
+            meta: 0,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        index_to_algebraic(self.source_square as u32)
+            + &index_to_algebraic(self.dest_square as u32)
+            + match self.promote_to {
+                Some(PieceType::Queen) => "q",
+                Some(PieceType::Knight) => "n",
+                Some(PieceType::Bishop) => "b",
+                Some(PieceType::Rook) => "r",
+                _ => "",
+            }
+    }
+
+    pub fn create(
+        source_square: u8,
+        dest_square: u8,
+        promote_to: Option<PieceType>,
+        meta: u16,
+    ) -> BitMove {
+        BitMove {
+            source_square,
+            dest_square,
+            promote_to,
+            meta,
+        }
+    }
+
+    pub fn create_capture(
+        source_square: u8,
+        dest_square: u8,
+        attacker: u16,
+        victim: u16,
+        promote_to: Option<PieceType>,
+        meta: u16,
+    ) -> BitMove {
+        BitMove {
+            source_square,
+            dest_square,
+            promote_to,
+            // Most Valuable Victim / Least Valuable Attacker
+            meta: meta | (victim * 10 - attacker),
         }
     }
 }
