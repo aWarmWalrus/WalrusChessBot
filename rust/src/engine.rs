@@ -1,6 +1,7 @@
-use crate::arrayboard::{generate_moves::MOVE_CAPTURE, is_piece_white, ArrayBoard};
+use crate::arrayboard::{generate_moves::MOVE_CAPTURE, ArrayBoard};
 use crate::chessboard::ChessBoard;
 use crate::moves::BitMove;
+use crate::piece::is_piece_white;
 use std::cmp;
 use std::collections::HashMap;
 use std::io;

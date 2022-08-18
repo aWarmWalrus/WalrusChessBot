@@ -4,6 +4,7 @@ pub trait ChessBoard {
     // Factory method
     fn create_from_fen(fen: &str) -> Self;
 
+    // Generate pseudo legal moves in the sense that these moves may leave king in check.
     fn generate_moves(&self) -> Vec<BitMove>;
     fn make_move(&mut self, mv: &BitMove);
     fn take_back_move(&mut self, mv: &BitMove);

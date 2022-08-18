@@ -10,6 +10,7 @@ mod book_moves;
 mod chessboard;
 mod engine;
 mod moves;
+mod piece;
 mod uci;
 
 use arrayboard::ArrayBoard;

@@ -9,6 +9,7 @@ pub mod generate_moves;
 
 use crate::chessboard::ChessBoard;
 use crate::moves::BitMove;
+use crate::piece::{is_piece_white, piece_to_bits, piece_type, PieceType, PIECE_TYPE};
 
 // Constants and Enums
 const BOARD_SIZE: u32 = 8;
@@ -19,10 +20,6 @@ const ROW_OFFSET: u8 = 3;
 const ROW_MASK: u8 = 0b111000;
 const COL_MASK: u8 = 0b000111;
 // const INDEX_MASK: u8 = 0b111111;
-
-const PIECE_TYPE_MASK: u32 = 0b1110;
-const PIECE_SIDE_MASK: u32 = 0b0001;
-const PIECE_TYPE: u32 = 1;
 
 //   - meta[0] = side to move
 //   - meta[1:5] = castles
@@ -42,21 +39,6 @@ pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQ
 pub const PERFT2_FEN: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
 pub const TEST_FEN: &str = "r3k2r/6B1/8/8/8/8/1b4b1/R3K2R b KQk - 0 1";
 pub const TRICKY_FEN: &str = "r3k2r/pPppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
-
-#[derive(FromPrimitive, Copy, Clone)]
-pub enum PieceType {
-    Empty = 0,
-    Pawn = 1,
-    Knight = 2,
-    Bishop = 3,
-    Rook = 4,
-    Queen = 5,
-    King = 6,
-}
-
-pub fn piece_type(piece: u32) -> u32 {
-    (piece & PIECE_TYPE_MASK) >> PIECE_TYPE
-}
 
 // Struct definitions
 #[derive(Copy, Clone, Eq, Hash)]
@@ -115,19 +97,11 @@ pub fn index_to_algebraic(index: u32) -> String {
     String::from(file) + &rank.to_string()
 }
 
-pub fn is_piece_white(piece: u32) -> bool {
-    (PIECE_SIDE_MASK & piece) == 1
-}
-
-fn piece_to_bits(piece: PieceType, side: u8) -> u8 {
-    ((piece as u8) << (PIECE_TYPE as u8)) | side
-}
-
 // Struct implementations
 impl ArrayBoard {
     // Getters ======================================================
     fn side_to_move(&self) -> u8 {
-        (self.meta & PIECE_SIDE_MASK as u16) as u8
+        (self.meta & META_SIDE_TO_MOVE_MASK as u16) as u8
     }
 
     fn get_enpassant(&self) -> u8 {
@@ -135,7 +109,7 @@ impl ArrayBoard {
     }
 
     fn is_opponent_piece(&self, piece: u32) -> bool {
-        (self.meta & META_SIDE_TO_MOVE_MASK == 0) != (PIECE_SIDE_MASK & piece == 0)
+        (self.meta & META_SIDE_TO_MOVE_MASK == 0) == is_piece_white(piece)
     }
 
     // MAKE MOVE logic ==============================================
@@ -219,7 +193,7 @@ impl ChessBoard for ArrayBoard {
     }
 
     fn white_to_move(&self) -> bool {
-        (self.meta & PIECE_SIDE_MASK as u16) == 1
+        (self.meta & META_SIDE_TO_MOVE_MASK as u16) == 1
     }
 
     fn is_king_checked(&self) -> bool {
@@ -362,8 +336,7 @@ impl ChessBoard for ArrayBoard {
             // let mut row_str = String::from("");
             let piece_bits = self.board[i as usize] as u32;
             let piece = piece_to_char(piece_type(piece_bits), " ");
-            let side = piece_bits & PIECE_SIDE_MASK;
-            if side == 0 {
+            if is_piece_white(piece_bits) {
                 print!("{}", piece);
             } else {
                 print!("{}", piece.to_ascii_uppercase());

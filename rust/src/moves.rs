@@ -1,4 +1,5 @@
-use crate::arrayboard::{algebraic_to_index, index_to_algebraic, PieceType};
+use crate::arrayboard::{algebraic_to_index, index_to_algebraic};
+use crate::piece::PieceType;
 
 #[derive(Copy, Clone)]
 pub struct BitMove {
