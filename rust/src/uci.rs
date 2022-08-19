@@ -128,7 +128,7 @@ pub fn run() {
                                     Some(bm) => bm.get_child(mv),
                                     None => None,
                                 };
-                                board.make_move(&BitMove::from_string(mv));
+                                board.make_move(&mut BitMove::from_string(mv));
                                 let hash = board.hash();
                                 if hist_data.contains_key(&hash) {
                                     *hist_data.get_mut(&hash).unwrap() += 1;

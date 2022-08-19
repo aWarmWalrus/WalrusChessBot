@@ -1,4 +1,4 @@
-use crate::arrayboard::{generate_moves::MOVE_CAPTURE, ArrayBoard};
+use crate::arrayboard::ArrayBoard;
 use crate::chessboard::ChessBoard;
 use crate::moves::BitMove;
 use crate::piece::is_piece_white;
@@ -276,11 +276,11 @@ fn quiesce(board: &mut impl ChessBoard, mut alpha: i64, beta: i64, depth: u8) ->
         return (alpha, 1);
     }
     let mut nodes = 1;
-    for mv in board.generate_moves() {
-        if mv.meta & MOVE_CAPTURE == 0 {
+    for mut mv in board.generate_moves() {
+        if !mv.is_capture() {
             continue;
         }
-        board.make_move(&mv);
+        board.make_move(&mut mv);
         let (q_score, q_nodes) = quiesce(board, -beta, -alpha, depth + 1);
         board.take_back_move(&mv);
         nodes += q_nodes;
@@ -357,11 +357,11 @@ pub fn search(
         None
     };
 
-    for (i, mv) in moves.into_iter().enumerate() {
+    for (i, mut mv) in moves.into_iter().enumerate() {
         if depth == 0 {
             println!("info currmove {} currmovenumber {i}", mv.to_string());
         }
-        board.make_move(&mv);
+        board.make_move(&mut mv);
         let (pv, score, child_nodes) = search(board, -beta, -alpha, depth + 1, hist_data);
         board.take_back_move(&mv);
         nodes += child_nodes;

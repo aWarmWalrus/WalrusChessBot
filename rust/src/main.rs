@@ -28,23 +28,23 @@ fn perft(board: &mut impl ChessBoard, max_depth: u32, depth: u32) -> (u32, u32, 
     if depth == (max_depth - 1) {
         for mv in board.generate_moves() {
             nodes += 1;
-            if mv.meta & arrayboard::generate_moves::MOVE_CAPTURE > 0 {
+            if mv.is_capture() {
                 captures += 1;
             }
-            if mv.meta & arrayboard::generate_moves::MOVE_CASTLE > 0 {
+            if mv.is_castle() {
                 castles += 1;
             }
-            if mv.meta & arrayboard::generate_moves::MOVE_CHECK > 0 {
+            if mv.is_check() {
                 checks += 1;
             }
-            if mv.meta & arrayboard::generate_moves::MOVE_PROMO > 0 {
+            if mv.is_promo() {
                 promos += 1;
             }
         }
         return (nodes, captures, castles, checks, promos);
     }
-    for mv in board.generate_moves() {
-        board.make_move(&mv);
+    for mut mv in board.generate_moves() {
+        board.make_move(&mut mv);
         // println!("{}", &mv.to_string());
         // new_board.pretty_print(true);
         let (n, c1, c2, c3, p) = perft(board, max_depth, depth + 1);
@@ -101,7 +101,7 @@ fn init_startpos_50_moves(b: &mut Bencher) {
     b.iter(|| {
         let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
         for mv in moves50.clone() {
-            board.make_move(&BitMove::from_string(mv));
+            board.make_move(&mut BitMove::from_string(mv));
         }
     });
 }
@@ -113,7 +113,7 @@ fn init_startpos_100_moves(b: &mut Bencher) {
     b.iter(|| {
         let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
         for mv in moves100.clone() {
-            board.make_move(&BitMove::from_string(mv));
+            board.make_move(&mut BitMove::from_string(mv));
         }
     });
 }

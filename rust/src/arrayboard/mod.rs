@@ -9,7 +9,9 @@ pub mod generate_moves;
 
 use crate::chessboard::ChessBoard;
 use crate::moves::BitMove;
-use crate::piece::{is_piece_white, piece_to_bits, piece_type, PieceType, PIECE_TYPE};
+use crate::piece::{
+    char_to_piece, is_piece_white, piece_to_bits, piece_to_char, piece_type, PieceType,
+};
 
 // Constants and Enums
 const BOARD_SIZE: u32 = 8;
@@ -61,30 +63,6 @@ impl PartialEq for ArrayBoard {
 }
 
 // Private Helper functions
-fn char_to_piece(piece: char) -> u32 {
-    match piece.to_ascii_lowercase() {
-        'p' => PieceType::Pawn as u32,
-        'n' => PieceType::Knight as u32,
-        'b' => PieceType::Bishop as u32,
-        'r' => PieceType::Rook as u32,
-        'q' => PieceType::Queen as u32,
-        'k' => PieceType::King as u32,
-        _ => PieceType::Empty as u32,
-    }
-}
-
-fn piece_to_char(piece: u32, if_none: &str) -> &str {
-    match num::FromPrimitive::from_u32(piece) {
-        Some(PieceType::Pawn) => "p",
-        Some(PieceType::Knight) => "n",
-        Some(PieceType::Bishop) => "b",
-        Some(PieceType::Rook) => "r",
-        Some(PieceType::Queen) => "q",
-        Some(PieceType::King) => "k",
-        _ => if_none,
-    }
-}
-
 pub fn algebraic_to_index(alg: &str) -> u16 {
     let col = (alg.bytes().nth(0).unwrap() - ('a' as u8)) as u16;
     let row = alg.chars().nth(1).unwrap().to_digit(10).unwrap() as u16;
@@ -121,27 +99,23 @@ impl ArrayBoard {
         self.board[index] = piece;
     }
 
-    fn castle_logic(&mut self, bm: &BitMove, piece: u32) {
-        if piece_type(piece) == (PieceType::King as u32) {
+    fn rook_castle_destinations(bm: &BitMove) -> (usize, usize) {
+        match (bm.source_square, bm.dest_square) {
+            (0o04, 0o02) => (0o00, 0o03),
+            (0o04, 0o06) => (0o07, 0o05),
+            (0o74, 0o72) => (0o70, 0o73),
+            (0o74, 0o76) => (0o77, 0o75),
+            _ => (0o00, 0o00),
+        }
+    }
+
+    fn make_castle_logic(&mut self, bm: &BitMove, piece: u32) {
+        if piece_type(piece) == PieceType::King {
             let rook = piece_to_bits(PieceType::Rook, self.side_to_move());
-            match (bm.source_square, bm.dest_square) {
-                (0o04, 0o02) => {
-                    self.remove_piece(0o00);
-                    self.add_piece(0o03, rook);
-                }
-                (0o04, 0o06) => {
-                    self.remove_piece(0o07);
-                    self.add_piece(0o05, rook);
-                }
-                (0o74, 0o72) => {
-                    self.remove_piece(0o70);
-                    self.add_piece(0o73, rook);
-                }
-                (0o74, 0o76) => {
-                    self.remove_piece(0o77);
-                    self.add_piece(0o75, rook);
-                }
-                _ => (),
+            let (rook_src, rook_dest) = Self::rook_castle_destinations(bm);
+            if rook_src != 0 {
+                self.remove_piece(rook_src);
+                self.add_piece(rook_dest, rook);
             }
             // META_CASTLE = 1;
             if self.white_to_move() {
@@ -152,7 +126,7 @@ impl ArrayBoard {
         }
 
         // Remove castle possibility when the rook moves
-        if piece_type(piece) == (PieceType::Rook as u32) {
+        if piece_type(piece) == PieceType::Rook {
             // META_CASTLE = 1;
             self.meta &= match (self.white_to_move(), (bm.source_square & 0b111) == 7) {
                 (false, true) => !(0b00010),
@@ -162,12 +136,12 @@ impl ArrayBoard {
             };
         }
         self.meta &= match (bm.dest_square, self.white_to_move()) {
-            (0o00, true) => !(0b00100),  // white takes black queen's rook
             (0o07, true) => !(0b00010),  // white takes black king's rook
-            (0o70, false) => !(0b10000), // black takes white queen's rook
+            (0o00, true) => !(0b00100),  // white takes black queen's rook
             (0o77, false) => !(0b01000), // black takes white king's rook
+            (0o70, false) => !(0b10000), // black takes white queen's rook
             _ => !(0),
-        }
+        };
     }
 
     // DEBUGGING AND PRINTING FUNCTIONS ===================================
@@ -215,8 +189,7 @@ impl ChessBoard for ArrayBoard {
                     index += c.to_digit(10).unwrap() as usize;
                     continue;
                 }
-                let player = if c.is_lowercase() { 0 } else { 1 };
-                board[index] = (player | (char_to_piece(c) << PIECE_TYPE)) as u8;
+                board[index] = char_to_piece(c);
                 index += 1;
             }
         }
@@ -244,8 +217,9 @@ impl ChessBoard for ArrayBoard {
         ArrayBoard { board, meta }
     }
 
-    fn make_move(&mut self, bit_move: &BitMove) {
-        let mut new_board = self.clone();
+    fn make_move(&mut self, bit_move: &mut BitMove) {
+        // First, save the board's current meta in bit_move for call to take_back_move() later.
+        bit_move.board_meta = self.meta;
 
         let source_piece = self.get_piece(bit_move.source_square as usize);
         let mut end_piece = source_piece as u8;
@@ -255,10 +229,10 @@ impl ChessBoard for ArrayBoard {
             panic!("Illegal move: {}", bit_move.to_string());
         }
 
-        new_board.castle_logic(&bit_move, source_piece);
+        self.make_castle_logic(&bit_move, source_piece);
 
-        new_board.meta &= !(META_ENPASSANT_MASK << META_ENPASSANT);
-        if piece_type(source_piece) == (PieceType::Pawn as u32) {
+        self.meta &= !(META_ENPASSANT_MASK << META_ENPASSANT);
+        if piece_type(source_piece) == PieceType::Pawn {
             let dest_row = (bit_move.dest_square & ROW_MASK) >> ROW_OFFSET;
             // Pawn promotion
             if dest_row == 0 || dest_row == 7 {
@@ -271,30 +245,39 @@ impl ChessBoard for ArrayBoard {
                 // Captured piece is on same row as source, same col as dest.
                 let captured =
                     (bit_move.source_square & ROW_MASK) | bit_move.dest_square & COL_MASK;
-                new_board.remove_piece(captured as usize);
+                self.remove_piece(captured as usize);
             }
             // Double advance
             if bit_move.source_square.abs_diff(bit_move.dest_square) == 0o20 {
                 let ep_row = if self.white_to_move() { 0o50 } else { 0o20 } as u16;
                 let source_col = (bit_move.source_square & COL_MASK) as u16;
-                new_board.meta |= ((ep_row | source_col) << META_ENPASSANT) as u16;
+                self.meta |= ((ep_row | source_col) << META_ENPASSANT) as u16;
             }
         }
-        if bit_move.meta & generate_moves::MOVE_CHECK > 0 {
-            new_board.meta |= META_KING_CHECK_MASK;
+        if bit_move.is_check() {
+            self.meta |= META_KING_CHECK_MASK;
         } else {
-            new_board.meta &= !META_KING_CHECK_MASK;
+            self.meta &= !META_KING_CHECK_MASK;
         }
 
-        new_board.meta ^= META_SIDE_TO_MOVE_MASK;
-        new_board.remove_piece(bit_move.source_square as usize);
-        new_board.add_piece(bit_move.dest_square as usize, end_piece as u8);
-        // XXX FIX THIS
-        // new_board
+        self.meta ^= META_SIDE_TO_MOVE_MASK;
+        self.remove_piece(bit_move.source_square as usize);
+        self.add_piece(bit_move.dest_square as usize, end_piece as u8);
     }
 
-    fn take_back_move(&mut self, _mv: &BitMove) {
-        ()
+    fn take_back_move(&mut self, mv: &BitMove) {
+        let source_piece = self.get_piece(mv.source_square as usize);
+        // Undo castle moves.
+        if piece_type(source_piece) == PieceType::King {
+            let rook = piece_to_bits(PieceType::Rook, self.side_to_move());
+            let (rook_src, rook_dest) = Self::rook_castle_destinations(mv);
+            if rook_src != 0 {
+                self.remove_piece(rook_dest);
+                self.add_piece(rook_src, rook);
+            }
+        }
+
+        self.meta = mv.board_meta;
     }
 
     fn generate_moves(&self) -> Vec<BitMove> {
@@ -304,7 +287,7 @@ impl ChessBoard for ArrayBoard {
             if piece == 0 || self.is_opponent_piece(piece) {
                 continue;
             }
-            moves.append(&mut self.legal_moves_for_piece(piece_type(piece), i as u8));
+            moves.append(&mut self.legal_moves_for_piece(piece, i as u8));
         }
         moves.append(&mut self.legal_castle_moves());
         // moves = self.filter_king_checks(moves);
@@ -333,14 +316,8 @@ impl ChessBoard for ArrayBoard {
                 print!(" ");
             }
 
-            // let mut row_str = String::from("");
             let piece_bits = self.board[i as usize] as u32;
-            let piece = piece_to_char(piece_type(piece_bits), " ");
-            if is_piece_white(piece_bits) {
-                print!("{}", piece);
-            } else {
-                print!("{}", piece.to_ascii_uppercase());
-            }
+            print!("{}", piece_to_char(piece_bits, " "));
             if i % BOARD_SIZE == 7 {
                 println!("|");
             }

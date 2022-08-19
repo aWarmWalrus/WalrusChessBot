@@ -6,7 +6,7 @@ pub trait ChessBoard {
 
     // Generate pseudo legal moves in the sense that these moves may leave king in check.
     fn generate_moves(&self) -> Vec<BitMove>;
-    fn make_move(&mut self, mv: &BitMove);
+    fn make_move(&mut self, mv: &mut BitMove);
     fn take_back_move(&mut self, mv: &BitMove);
     fn hash(&self) -> u64;
 
