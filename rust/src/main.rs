@@ -46,16 +46,17 @@ fn perft(board: &mut impl ChessBoard, max_depth: u32, depth: u32) -> (u32, u32, 
         return (nodes, captures, castles, checks, promos);
     }
     for mut mv in board.generate_moves() {
-        board.make_move(&mut mv);
+        if board.make_move(&mut mv) {
+            let (n, c1, c2, c3, p) = perft(board, max_depth, depth + 1);
+            nodes += n;
+            captures += c1;
+            castles += c2;
+            checks += c3;
+            promos += p;
+        }
         // println!("{}", &mv.to_string());
         // new_board.pretty_print(true);
-        let (n, c1, c2, c3, p) = perft(board, max_depth, depth + 1);
         board.take_back_move(&mv);
-        nodes += n;
-        captures += c1;
-        castles += c2;
-        checks += c3;
-        promos += p;
     }
     (nodes, captures, castles, checks, promos)
 }
@@ -85,7 +86,7 @@ fn main() {
     } else if DO_PERFT {
         let mut board = ArrayBoard::create_from_fen(arrayboard::PERFT2_FEN);
         let start = Instant::now();
-        let depth = 5;
+        let depth = 3;
         let (nodes, captures, castles, checks, promos) = perft(&mut board, depth, 0);
         let tm = start.elapsed().as_millis();
         println!(
