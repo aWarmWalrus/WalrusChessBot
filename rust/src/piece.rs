@@ -2,7 +2,7 @@ const PIECE_TYPE_MASK: u32 = 0b1110;
 const PIECE_SIDE_MASK: u32 = 0b0001;
 pub const PIECE_TYPE: u32 = 1;
 
-#[derive(FromPrimitive, Copy, Clone, PartialEq)]
+#[derive(FromPrimitive, Copy, Clone, Debug, PartialEq)]
 pub enum PieceType {
     Empty = 0,
     Pawn = 1,

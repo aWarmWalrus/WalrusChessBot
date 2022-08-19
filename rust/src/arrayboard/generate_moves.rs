@@ -84,16 +84,6 @@ fn is_back_rank(index: usize) -> bool {
 }
 
 impl ArrayBoard {
-    fn find_piece(&self, piece: u8) -> u32 {
-        for i in 0..64 {
-            if self.board[i] == piece {
-                return i as u32;
-            }
-        }
-        self.pretty_print(true);
-        panic!("Piece not found on board {:0b}", piece);
-    }
-
     fn legal_moves_for_pawn(&self, index: u8) -> Vec<BitMove> {
         let mut moves = Vec::new();
         let forward = if self.white_to_move() { -1 } else { 1 };
@@ -225,11 +215,11 @@ impl ArrayBoard {
         moves
     }
 
-    pub fn legal_moves_for_piece(&self, piece: u32, index: u8) -> Vec<BitMove> {
-        match num::FromPrimitive::from_u32(piece) {
-            Some(PieceType::Pawn) => self.legal_moves_for_pawn(index),
-            Some(piece_type) => self.legal_moves_general(piece_type, index),
-            _ => panic!("Weird piece: {}", piece),
+    pub fn legal_moves_for_piece(&self, piece: PieceType, index: u8) -> Vec<BitMove> {
+        match piece {
+            PieceType::Pawn => self.legal_moves_for_pawn(index),
+            PieceType::Empty => Vec::new(),
+            _ => self.legal_moves_general(piece, index),
         }
     }
 

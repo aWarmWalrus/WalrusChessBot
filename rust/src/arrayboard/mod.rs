@@ -104,6 +104,16 @@ impl ArrayBoard {
         self.board[index] = piece;
     }
 
+    fn find_piece(&self, piece: u8) -> u32 {
+        for i in 0..64 {
+            if self.board[i] == piece {
+                return i as u32;
+            }
+        }
+        self.pretty_print(true);
+        panic!("Piece not found on board {:0b}", piece);
+    }
+
     fn rook_castle_destinations(bm: &BitMove) -> (usize, usize) {
         match (bm.source_square, bm.dest_square) {
             (0o04, 0o02) => (0o00, 0o03),
@@ -147,6 +157,12 @@ impl ArrayBoard {
             (0o70, false) => !(0b10000), // black takes white queen's rook
             _ => !(0),
         };
+    }
+
+    fn is_king_safe(&self) -> bool {
+        let our_king = piece_to_bits(PieceType::King, self.side_to_move());
+        let our_king_ind = self.find_piece(our_king);
+        !self.is_square_attacked(our_king_ind, !self.white_to_move())
     }
 
     // DEBUGGING AND PRINTING FUNCTIONS ===================================
@@ -222,7 +238,7 @@ impl ChessBoard for ArrayBoard {
         ArrayBoard { board, meta }
     }
 
-    fn make_move(&mut self, bit_move: &mut BitMove) {
+    fn make_move(&mut self, bit_move: &mut BitMove) -> bool {
         // First, save the board's current meta in bit_move for call to take_back_move() later.
         bit_move.board_meta = self.meta;
 
@@ -266,9 +282,14 @@ impl ChessBoard for ArrayBoard {
             self.meta &= !META_KING_CHECK_MASK;
         }
 
-        self.meta ^= META_SIDE_TO_MOVE_MASK;
         self.remove_piece(bit_move.source_square as usize);
         self.add_piece(bit_move.dest_square as usize, end_piece as u8);
+
+        if self.is_king_safe() {
+            self.meta ^= META_SIDE_TO_MOVE_MASK;
+            return true;
+        }
+        return false;
     }
 
     fn take_back_move(&mut self, mv: &BitMove) {
@@ -321,7 +342,7 @@ impl ChessBoard for ArrayBoard {
             if piece == 0 || self.is_opponent_piece(piece) {
                 continue;
             }
-            moves.append(&mut self.legal_moves_for_piece(piece, i as u8));
+            moves.append(&mut self.legal_moves_for_piece(piece_type(piece), i as u8));
         }
         moves.append(&mut self.legal_castle_moves());
         // moves = self.filter_king_checks(moves);
