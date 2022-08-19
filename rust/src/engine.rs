@@ -361,6 +361,7 @@ pub fn search(
         if depth == 0 {
             println!("info currmove {} currmovenumber {i}", mv.to_string());
         }
+        // TODO: Check HERE if the move is legal (i.e. king is not in check after making this move).
         board.make_move(&mut mv);
         let (pv, score, child_nodes) = search(board, -beta, -alpha, depth + 1, hist_data);
         board.take_back_move(&mv);

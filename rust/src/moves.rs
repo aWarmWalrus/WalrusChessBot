@@ -11,12 +11,21 @@ pub const MOVE_PROMO: u16 = 0b0100000000000;
 pub struct BitMove {
     pub source_square: u8,
     pub dest_square: u8,
+
+    // Only moves that are generated during search will have the source_piece and captured fields
+    // filled in. This information is only stored in this struct to help in taking back moves.
     pub source_piece: PieceType,
     pub captured: PieceType,
+
     pub promote_to: Option<PieceType>,
+
+    // Meta bits about the move, that are used to sort moves.
     // Bits 0-7 are the score for measuring Most Valuable Victim / Least Valuable Attacker.
     // Bits 8-11 are for categorizing the moves (capture, check, castle, promo).
     pub meta: u16,
+
+    // Only moves that are generated during search will use this field. This is only stored here
+    // to help in taking back moves and restoring prior state.
     pub board_meta: u16,
 }
 
@@ -96,6 +105,11 @@ impl BitMove {
         promote_to: Option<PieceType>,
         meta: u16,
     ) -> BitMove {
+        // If a promoted pawn captures, use the promotion as the "attacker" instead of the pawn.
+        let attacker = match promote_to {
+            Some(piece) => piece,
+            None => source_piece,
+        };
         BitMove {
             source_square,
             dest_square,
@@ -103,7 +117,7 @@ impl BitMove {
             captured,
             promote_to,
             // Most Valuable Victim / Least Valuable Attacker
-            meta: meta | (captured as u16 * 10 - source_piece as u16),
+            meta: meta | (captured as u16 * 10 - attacker as u16),
             board_meta: 0,
         }
     }

@@ -41,6 +41,7 @@ pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQ
 pub const PERFT2_FEN: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
 pub const TEST_FEN: &str = "r3k2r/6B1/8/8/8/8/1b4b1/R3K2R b KQk - 0 1";
 pub const TRICKY_FEN: &str = "r3k2r/pPppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+// pub const CASTLE_FEN: &str = "r3k2r/pppp1ppp/3b1n2/1nb1pq2/4P3/1QNBBN2/PPPP1PPP/R3K2R w KQkq - 0 1";
 
 // Struct definitions
 #[derive(Copy, Clone, Eq, Hash)]
@@ -79,7 +80,11 @@ pub fn index_to_algebraic(index: u32) -> String {
 impl ArrayBoard {
     // Getters ======================================================
     fn side_to_move(&self) -> u8 {
-        (self.meta & META_SIDE_TO_MOVE_MASK as u16) as u8
+        (self.meta & META_SIDE_TO_MOVE_MASK) as u8
+    }
+
+    fn not_side_to_move(&self) -> u8 {
+        ((self.meta & META_SIDE_TO_MOVE_MASK) ^ META_SIDE_TO_MOVE_MASK) as u8
     }
 
     fn get_enpassant(&self) -> u8 {
@@ -231,7 +236,7 @@ impl ChessBoard for ArrayBoard {
 
         self.make_castle_logic(&bit_move, source_piece);
 
-        self.meta &= !(META_ENPASSANT_MASK << META_ENPASSANT);
+        let mut new_meta = self.meta & !(META_ENPASSANT_MASK << META_ENPASSANT);
         if piece_type(source_piece) == PieceType::Pawn {
             let dest_row = (bit_move.dest_square & ROW_MASK) >> ROW_OFFSET;
             // Pawn promotion
@@ -251,9 +256,10 @@ impl ChessBoard for ArrayBoard {
             if bit_move.source_square.abs_diff(bit_move.dest_square) == 0o20 {
                 let ep_row = if self.white_to_move() { 0o50 } else { 0o20 } as u16;
                 let source_col = (bit_move.source_square & COL_MASK) as u16;
-                self.meta |= ((ep_row | source_col) << META_ENPASSANT) as u16;
+                new_meta |= ((ep_row | source_col) << META_ENPASSANT) as u16;
             }
         }
+        self.meta = new_meta;
         if bit_move.is_check() {
             self.meta |= META_KING_CHECK_MASK;
         } else {
@@ -266,18 +272,46 @@ impl ChessBoard for ArrayBoard {
     }
 
     fn take_back_move(&mut self, mv: &BitMove) {
-        let source_piece = self.get_piece(mv.source_square as usize);
+        // Restoring the board meta needs to happen before calls to self.side_to_move() and self.get_enpassant().
+        self.meta = mv.board_meta;
+
         // Undo castle moves.
-        if piece_type(source_piece) == PieceType::King {
-            let rook = piece_to_bits(PieceType::Rook, self.side_to_move());
+        if mv.source_piece == PieceType::King {
             let (rook_src, rook_dest) = Self::rook_castle_destinations(mv);
             if rook_src != 0 {
+                let rook = piece_to_bits(PieceType::Rook, self.side_to_move());
                 self.remove_piece(rook_dest);
                 self.add_piece(rook_src, rook);
             }
         }
 
-        self.meta = mv.board_meta;
+        self.add_piece(
+            mv.source_square as usize,
+            piece_to_bits(mv.source_piece, self.side_to_move()),
+        );
+
+        // Decide if we need to restore any captured pieces.
+        if mv.captured == PieceType::Empty {
+            self.remove_piece(mv.dest_square as usize);
+
+        // Special en-passant case.
+        } else if mv.source_piece == PieceType::Pawn
+            && mv.dest_square == self.get_enpassant()
+            && mv.dest_square > 0
+        {
+            // mv.captured should == Pawn
+            let ep_index = (mv.source_square & ROW_MASK) | (mv.dest_square & COL_MASK);
+            self.add_piece(
+                ep_index as usize,
+                piece_to_bits(PieceType::Pawn, self.not_side_to_move()),
+            );
+            self.remove_piece(mv.dest_square as usize);
+        } else {
+            self.add_piece(
+                mv.dest_square as usize,
+                piece_to_bits(mv.captured, self.not_side_to_move()),
+            );
+        }
     }
 
     fn generate_moves(&self) -> Vec<BitMove> {
