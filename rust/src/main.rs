@@ -82,7 +82,7 @@ fn main() {
     } else if DO_PERFT {
         let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
         let start = Instant::now();
-        let depth = 5;
+        let depth = 3;
         let (nodes, captures, castles, checks, promos) = perft(&mut board, depth, 0);
         let tm = start.elapsed().as_millis();
         println!(
