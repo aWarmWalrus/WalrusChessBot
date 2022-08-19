@@ -21,27 +21,16 @@ use std::time::Instant;
 use test::Bencher;
 
 const DO_DEBUG: bool = false;
-const DO_PERFT: bool = false;
+const DO_PERFT: bool = true;
 
 const _TEST_CASE_1: &str = "position startpos moves e2e4 c7c5 g1f3 e7e6 d2d4 c5d4 f3d4 b8c6 b1c3 d8c7 d1d3 c6d4 d3d4 c7b6 d4b6 a7b6 c3b5 a8a4 f2f3 f8c5 c2c3 e8f8 b2b3";
 
 fn perft(board: &mut impl ChessBoard, max_depth: u32, depth: u32) -> (u32, u32, u32, u32, u32) {
     let (mut nodes, mut captures, mut castles, mut checks, mut promos) = (0, 0, 0, 0, 0);
-    if depth == (max_depth - 1) {
-        for mv in board.generate_moves() {
-            nodes += 1;
-            if mv.is_capture() {
-                captures += 1;
-            }
-            if mv.is_castle() {
-                castles += 1;
-            }
-            if mv.is_check() {
-                checks += 1;
-            }
-            if mv.is_promo() {
-                promos += 1;
-            }
+    if depth == max_depth {
+        nodes += 1;
+        if board.is_king_checked() {
+            checks += 1;
         }
         return (nodes, captures, castles, checks, promos);
     }
@@ -91,7 +80,7 @@ fn main() {
         // board.take_back_move(&mv);
         // board.pretty_print(true);
     } else if DO_PERFT {
-        let mut board = ArrayBoard::create_from_fen(arrayboard::PERFT2_FEN);
+        let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
         let start = Instant::now();
         let depth = 5;
         let (nodes, captures, castles, checks, promos) = perft(&mut board, depth, 0);
