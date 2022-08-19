@@ -264,35 +264,52 @@ fn eval(board: &impl ChessBoard) -> i64 {
     (mg_phase * mg_score + eg_phase * eg_score) / 24
 }
 
-fn quiesce(board: &mut impl ChessBoard, mut alpha: i64, beta: i64, depth: u8) -> (i64, u64) {
+fn quiesce(
+    board: &mut impl ChessBoard,
+    mut alpha: i64,
+    beta: i64,
+    depth: u8,
+) -> Option<(i64, u64)> {
     let val = eval(board);
     if val >= beta {
-        return (beta, 1);
+        return Some((beta, 1));
     }
     if val > alpha {
         alpha = val;
     }
     if depth == MAX_QUIESCE_DEPTH {
-        return (alpha, 1);
+        return Some((alpha, 1));
     }
     let mut nodes = 1;
     for mut mv in board.generate_moves() {
         if !mv.is_capture() {
             continue;
         }
-        board.make_move(&mut mv);
-        let (q_score, q_nodes) = quiesce(board, -beta, -alpha, depth + 1);
+        match board.make_move(&mut mv) {
+            Some(true) => {
+                if let Some((q_score, q_nodes)) = quiesce(board, -beta, -alpha, depth + 1) {
+                    board.take_back_move(&mv);
+                    nodes += q_nodes;
+                    if -q_score >= beta {
+                        board.take_back_move(&mv);
+                        return Some((beta, nodes));
+                    }
+                    if -q_score > alpha {
+                        alpha = -q_score;
+                    }
+                }
+            }
+            Some(false) => (),
+            None => {
+                println!("Bad move!! {}", mv.to_string());
+                board.pretty_print(true);
+                return None;
+            }
+        }
         board.take_back_move(&mv);
-        nodes += q_nodes;
-        if -q_score >= beta {
-            return (beta, nodes);
-        }
-        if -q_score > alpha {
-            alpha = -q_score;
-        }
     }
 
-    return (alpha, nodes);
+    return Some((alpha, nodes));
 }
 
 fn increment_board_hist(hash: u64, hist_data: &mut HashMap<u64, u8>) -> u8 {
@@ -323,30 +340,24 @@ pub fn search(
     beta: i64,
     depth: u8,
     hist_data: &mut HashMap<u64, u8>,
-) -> (String, i64, u64) {
+) -> Option<(String, i64, u64)> {
     if depth == MAX_DEPTH.load(Ordering::Relaxed) {
         if QUIESCE {
-            let (quiesce_score, quiesce_nodes) = quiesce(board, alpha, beta, 0);
-            return ("".to_string(), quiesce_score, quiesce_nodes);
+            if let Some((quiesce_score, quiesce_nodes)) = quiesce(board, alpha, beta, 0) {
+                return Some(("".to_string(), quiesce_score, quiesce_nodes));
+            }
+            return None;
         }
-        return (String::from(""), eval(board), 1);
+        return Some((String::from(""), eval(board), 1));
     }
     let moves = board.generate_moves();
-    if moves.len() == 0 {
-        if board.is_king_checked() {
-            // let mut line = String::new();
-            // let _res = std::io::stdin().read_line(&mut line);
-            return ("".to_string(), -CHECKMATE + depth as i64, 1);
-        }
-        // println!("{}<< STALEMATE", "  ".repeat(depth as usize));
-        return ("".to_string(), 0, 1);
-    }
+
     let hash = board.hash();
     let reps = increment_board_hist(hash, hist_data);
     // 3-fold stalemate.
-    if reps >= 3 {
+    if reps >= 3 && false {
         decrement_board_hist(hash, hist_data);
-        return ("".to_string(), 0, 1);
+        return Some(("".to_string(), 0, 1));
     }
 
     let mut nodes = 1;
@@ -357,28 +368,56 @@ pub fn search(
         None
     };
 
+    let mut legal_moves = 0;
     for (i, mut mv) in moves.into_iter().enumerate() {
         if depth == 0 {
             println!("info currmove {} currmovenumber {i}", mv.to_string());
         }
-        // TODO: Check HERE if the move is legal (i.e. king is not in check after making this move).
-        board.make_move(&mut mv);
-        let (pv, score, child_nodes) = search(board, -beta, -alpha, depth + 1, hist_data);
-        board.take_back_move(&mv);
-        nodes += child_nodes;
+        // Check HERE if the move is legal (i.e. king is not in check after making this move).
+        match board.make_move(&mut mv) {
+            Some(true) => {
+                legal_moves += 1;
+                if let Some((pv, score, child_nodes)) =
+                    search(board, -beta, -alpha, depth + 1, hist_data)
+                {
+                    nodes += child_nodes;
 
-        if -score >= beta {
-            decrement_board_hist(hash, hist_data);
-            return (mv.to_string() + " " + &pv, beta, nodes);
-        }
-        if -score > alpha {
-            alpha = -score;
-            best_pv = mv.to_string() + " " + &pv.to_string();
-            if depth == 0 {
-                print_info(-score, nodes, start_time.unwrap(), &best_pv);
+                    if -score >= beta {
+                        // decrement_board_hist(hash, hist_data);
+                        board.take_back_move(&mv);
+                        return Some((mv.to_string() + " " + &pv, beta, nodes));
+                    }
+                    if -score > alpha {
+                        alpha = -score;
+                        best_pv = mv.to_string() + " " + &pv.to_string();
+                        if depth == 0 {
+                            print_info(-score, nodes, start_time.unwrap(), &best_pv);
+                        }
+                    }
+                } else {
+                    println!("Bad move!! {}", mv.to_string());
+                    board.pretty_print(true);
+                    return None;
+                }
+            }
+            Some(false) => (),
+            None => {
+                println!("Bad move!! {}", mv.to_string());
+                board.pretty_print(true);
+                return None;
             }
         }
+        board.take_back_move(&mv);
     }
-    decrement_board_hist(hash, hist_data);
-    (best_pv, alpha, nodes)
+    if legal_moves == 0 {
+        if board.is_king_checked() {
+            // let mut line = String::new();
+            // let _res = std::io::stdin().read_line(&mut line);
+            return Some(("".to_string(), -CHECKMATE + depth as i64, 1));
+        }
+        // println!("{}<< STALEMATE", "  ".repeat(depth as usize));
+        return Some(("".to_string(), 0, 1));
+    }
+    // decrement_board_hist(hash, hist_data);
+    Some((best_pv, alpha, nodes))
 }
