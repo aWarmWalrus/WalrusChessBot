@@ -104,14 +104,23 @@ impl ArrayBoard {
         self.board[index] = piece;
     }
 
-    fn find_piece(&self, piece: u8) -> u32 {
+    fn find_piece(&self, piece: u8) -> Option<u32> {
         for i in 0..64 {
             if self.board[i] == piece {
-                return i as u32;
+                return Some(i as u32);
             }
         }
-        self.pretty_print(true);
-        panic!("Piece not found on board {:0b}", piece);
+        println!(
+            "Piece not found on board {} {:#?} ({:0b})",
+            if is_piece_white(piece as u32) {
+                "White"
+            } else {
+                "Black"
+            },
+            piece_type(piece as u32),
+            piece
+        );
+        return None;
     }
 
     fn rook_castle_destinations(bm: &BitMove) -> (usize, usize) {
@@ -159,10 +168,12 @@ impl ArrayBoard {
         };
     }
 
-    fn is_king_safe(&self) -> bool {
+    fn is_king_safe(&self) -> Option<bool> {
         let our_king = piece_to_bits(PieceType::King, self.side_to_move());
-        let our_king_ind = self.find_piece(our_king);
-        !self.is_square_attacked(our_king_ind, !self.white_to_move())
+        match self.find_piece(our_king) {
+            Some(i) => Some(!self.is_square_attacked(i, !self.white_to_move())),
+            None => None,
+        }
     }
 
     // DEBUGGING AND PRINTING FUNCTIONS ===================================
@@ -192,7 +203,8 @@ impl ChessBoard for ArrayBoard {
     }
 
     fn is_king_checked(&self) -> bool {
-        (self.meta & META_KING_CHECK_MASK) > 0
+        !self.is_king_safe().unwrap()
+        // (self.meta & META_KING_CHECK_MASK) > 0
     }
 
     fn hash(&self) -> u64 {
@@ -238,7 +250,7 @@ impl ChessBoard for ArrayBoard {
         ArrayBoard { board, meta }
     }
 
-    fn make_move(&mut self, bit_move: &mut BitMove) -> bool {
+    fn make_move(&mut self, bit_move: &mut BitMove) -> Option<bool> {
         // First, save the board's current meta in bit_move for call to take_back_move() later.
         bit_move.board_meta = self.meta;
 
@@ -285,11 +297,17 @@ impl ChessBoard for ArrayBoard {
         self.remove_piece(bit_move.source_square as usize);
         self.add_piece(bit_move.dest_square as usize, end_piece as u8);
 
-        if self.is_king_safe() {
-            self.meta ^= META_SIDE_TO_MOVE_MASK;
-            return true;
+        match self.is_king_safe() {
+            Some(b) => {
+                self.meta ^= META_SIDE_TO_MOVE_MASK;
+                return Some(b);
+            }
+            None => {
+                println!("Illegal move!");
+                self.pretty_print(true);
+                None
+            }
         }
-        return false;
     }
 
     fn take_back_move(&mut self, mv: &BitMove) {

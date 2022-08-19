@@ -46,23 +46,26 @@ fn go(
     }
 
     let start = Instant::now();
-    let (best, _score, nodes) = engine::search(
+    if let Some((best, _score, nodes)) = engine::search(
         board,
         /* alpha= */ i32::MIN as i64,
         /* beta= */ i32::MAX as i64,
         /* depth=*/ 0,
         hist_data,
-    );
-    let tm = start.elapsed().as_millis();
-    println!(
-        "info nodes {nodes} time {tm} nps {}",
-        (nodes as f64 / (tm as f64 / 1000.0)) as u64
-    );
-    if best.is_empty() {
-        board.pretty_print(true);
-        println!("ERROR: no moves possible");
+    ) {
+        let tm = start.elapsed().as_millis();
+        println!(
+            "info nodes {nodes} time {tm} nps {}",
+            (nodes as f64 / (tm as f64 / 1000.0)) as u64
+        );
+        if best.is_empty() {
+            board.pretty_print(true);
+            println!("ERROR: no moves possible");
+        } else {
+            println!("bestmove {}", best.split_whitespace().nth(0).unwrap());
+        }
     } else {
-        println!("bestmove {}", best.split_whitespace().nth(0).unwrap());
+        panic!("ILLEGAL MOVESASAASDF");
     }
 }
 
