@@ -23,19 +23,6 @@ const ROW_MASK: u8 = 0b111000;
 const COL_MASK: u8 = 0b000111;
 // const INDEX_MASK: u8 = 0b111111;
 
-//   - meta[0] = side to move
-//   - meta[1:5] = castles
-//   - meta[5:11] = en passant index
-//   - meta[11] = a king is checked
-const META_SIDE_TO_MOVE: u16 = 0;
-const META_SIDE_TO_MOVE_MASK: u16 = 0b1;
-const META_CASTLE: u16 = 1;
-const META_CASTLE_MASK: u16 = 0b1111;
-const META_ENPASSANT: u16 = 5;
-const META_ENPASSANT_MASK: u16 = 0b111111;
-const META_KING_CHECK_MASK: u16 = 0b100000000000;
-const META_KING_CHECK: u16 = 10;
-
 // Fenstrings
 pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 pub const PERFT2_FEN: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
@@ -44,23 +31,15 @@ pub const TRICKY_FEN: &str = "r3k2r/pPppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/
 // pub const CASTLE_FEN: &str = "r3k2r/pppp1ppp/3b1n2/1nb1pq2/4P3/1QNBBN2/PPPP1PPP/R3K2R w KQkq - 0 1";
 
 // Struct definitions
-#[derive(Copy, Clone, Eq, Hash)]
+#[derive(Copy, Clone, Eq, Hash, PartialEq)]
 pub struct ArrayBoard {
     // Represents the board state--each 8-bit entry is a piece. We only need 4 bits to represent
     // each piece, so this represntation does double the amount of space required.
     board: [u8; 64],
-    // Represents the meta data:
-    //   - meta[0] = side to move
-    //   - meta[1:5] = castles
-    //   - meta[5:11] = en passant index
-    //   - meta[11] = a king is checked
-    meta: u16,
-}
-
-impl PartialEq for ArrayBoard {
-    fn eq(&self, other: &ArrayBoard) -> bool {
-        other.board == self.board && other.meta == self.meta
-    }
+    white_to_move: bool,
+    castle_rights: u8,
+    en_passant: u8,
+    hash: u64,
 }
 
 // Private Helper functions
@@ -80,28 +59,52 @@ pub fn index_to_algebraic(index: u32) -> String {
 impl ArrayBoard {
     // Getters ======================================================
     fn side_to_move(&self) -> u8 {
-        (self.meta & META_SIDE_TO_MOVE_MASK) as u8
+        if self.white_to_move {
+            1
+        } else {
+            0
+        }
     }
 
     fn not_side_to_move(&self) -> u8 {
-        ((self.meta & META_SIDE_TO_MOVE_MASK) ^ META_SIDE_TO_MOVE_MASK) as u8
+        if self.white_to_move {
+            0
+        } else {
+            1
+        }
     }
 
     fn get_enpassant(&self) -> u8 {
-        ((self.meta & (META_ENPASSANT_MASK << META_ENPASSANT)) >> META_ENPASSANT) as u8
+        self.en_passant
+    }
+
+    fn get_castle_rights(&self) -> u8 {
+        self.castle_rights
     }
 
     fn is_opponent_piece(&self, piece: u32) -> bool {
-        (self.meta & META_SIDE_TO_MOVE_MASK == 0) == is_piece_white(piece)
+        self.white_to_move != is_piece_white(piece)
     }
 
-    // MAKE MOVE logic ==============================================
+    // Setterse =====================================================
     fn remove_piece(&mut self, index: usize) {
         self.board[index] = 0;
     }
 
     fn add_piece(&mut self, index: usize, piece: u8) {
         self.board[index] = piece;
+    }
+
+    fn set_enpassant(&mut self, index: u8) {
+        self.en_passant = index;
+    }
+
+    fn set_castle_rights(&mut self, cr: u8) {
+        self.castle_rights = cr;
+    }
+
+    fn swap_side_to_move(&mut self) {
+        self.white_to_move ^= true;
     }
 
     fn find_piece(&self, piece: u8) -> Option<u32> {
@@ -141,29 +144,27 @@ impl ArrayBoard {
                 self.remove_piece(rook_src);
                 self.add_piece(rook_dest, rook);
             }
-            // META_CASTLE = 1;
             if self.white_to_move() {
-                self.meta &= !(0b11000);
+                self.castle_rights &= !(0b1100);
             } else {
-                self.meta &= !(0b00110);
+                self.castle_rights &= !(0b0011);
             }
         }
 
         // Remove castle possibility when the rook moves
         if piece_type(piece) == PieceType::Rook {
-            // META_CASTLE = 1;
-            self.meta &= match (self.white_to_move(), (bm.source_square & 0b111) == 7) {
-                (false, true) => !(0b00010),
-                (false, false) => !(0b00100),
-                (true, true) => !(0b01000),
-                (true, false) => !(0b10000),
+            self.castle_rights &= match (self.white_to_move(), (bm.source_square & 0b111) == 7) {
+                (false, true) => !(0b0001),
+                (false, false) => !(0b0010),
+                (true, true) => !(0b0100),
+                (true, false) => !(0b1000),
             };
         }
-        self.meta &= match (bm.dest_square, self.white_to_move()) {
-            (0o07, true) => !(0b00010),  // white takes black king's rook
-            (0o00, true) => !(0b00100),  // white takes black queen's rook
-            (0o77, false) => !(0b01000), // black takes white king's rook
-            (0o70, false) => !(0b10000), // black takes white queen's rook
+        self.castle_rights &= match (bm.dest_square, self.white_to_move()) {
+            (0o07, true) => !(0b0001),  // white takes black king's rook
+            (0o00, true) => !(0b0010),  // white takes black queen's rook
+            (0o77, false) => !(0b0100), // black takes white king's rook
+            (0o70, false) => !(0b1000), // black takes white queen's rook
             _ => !(0),
         };
     }
@@ -199,7 +200,7 @@ impl ChessBoard for ArrayBoard {
     }
 
     fn white_to_move(&self) -> bool {
-        (self.meta & META_SIDE_TO_MOVE_MASK as u16) == 1
+        self.white_to_move
     }
 
     fn is_king_checked(&self) -> bool {
@@ -208,7 +209,7 @@ impl ChessBoard for ArrayBoard {
     }
 
     fn hash(&self) -> u64 {
-        0
+        self.hash
     }
 
     // Static factory method
@@ -227,44 +228,52 @@ impl ChessBoard for ArrayBoard {
             }
         }
         // META: Side to play
-        let mut meta = 0;
-        if fen_arr[1].starts_with('w') {
-            meta |= 1
-        }
+        let white_to_move = fen_arr[1].starts_with('w');
+
         // META: Castles
+        let mut castle_rights = 0;
         for c in fen_arr[2].chars() {
-            // HACK ALERT: Start one bit over since sideToMove bit is bit 0
             let ind = match c {
-                'k' => 0b00010,
-                'q' => 0b00100,
-                'K' => 0b01000,
-                'Q' => 0b10000,
+                'k' => 0b0001,
+                'q' => 0b0010,
+                'K' => 0b0100,
+                'Q' => 0b1000,
                 _ => 0,
             };
-            meta |= ind;
+            castle_rights |= ind;
         }
         // META: En Passant
-        if !fen_arr[3].eq_ignore_ascii_case("-") {
-            meta |= algebraic_to_index(fen_arr[3]) << 4;
+        let en_passant = if !fen_arr[3].eq_ignore_ascii_case("-") {
+            algebraic_to_index(fen_arr[3]) as u8
+        } else {
+            0
+        };
+        ArrayBoard {
+            board,
+            white_to_move,
+            castle_rights,
+            en_passant,
+            // TODO
+            hash: 0,
         }
-        ArrayBoard { board, meta }
     }
 
     fn make_move(&mut self, bit_move: &mut BitMove) -> Option<bool> {
-        // First, save the board's current meta in bit_move for call to take_back_move() later.
-        bit_move.board_meta = self.meta;
+        // First, save the board's current metadata in bit_move for call to take_back_move() later.
+        bit_move.set_prior_castle_rights(self.get_castle_rights());
+        bit_move.set_prior_enpassant(self.get_enpassant());
 
         let source_piece = self.get_piece(bit_move.source_square as usize);
         let mut end_piece = source_piece as u8;
 
         if (source_piece == 0) || self.is_opponent_piece(source_piece) {
             self.pretty_print(true);
-            panic!("Illegal move: {}", bit_move.to_string());
+            print!("Illegal move: {}", bit_move.to_string());
+            return None;
         }
 
         self.make_castle_logic(&bit_move, source_piece);
 
-        let mut new_meta = self.meta & !(META_ENPASSANT_MASK << META_ENPASSANT);
         if piece_type(source_piece) == PieceType::Pawn {
             let dest_row = (bit_move.dest_square & ROW_MASK) >> ROW_OFFSET;
             // Pawn promotion
@@ -282,37 +291,30 @@ impl ChessBoard for ArrayBoard {
             }
             // Double advance
             if bit_move.source_square.abs_diff(bit_move.dest_square) == 0o20 {
-                let ep_row = if self.white_to_move() { 0o50 } else { 0o20 } as u16;
-                let source_col = (bit_move.source_square & COL_MASK) as u16;
-                new_meta |= ((ep_row | source_col) << META_ENPASSANT) as u16;
+                let ep_row = if self.white_to_move() { 0o50 } else { 0o20 };
+                let source_col = bit_move.source_square & COL_MASK;
+                self.set_enpassant(ep_row | source_col);
             }
-        }
-        self.meta = new_meta;
-        if bit_move.is_check() {
-            self.meta |= META_KING_CHECK_MASK;
-        } else {
-            self.meta &= !META_KING_CHECK_MASK;
         }
 
         self.remove_piece(bit_move.source_square as usize);
         self.add_piece(bit_move.dest_square as usize, end_piece as u8);
 
-        match self.is_king_safe() {
-            Some(b) => {
-                self.meta ^= META_SIDE_TO_MOVE_MASK;
-                return Some(b);
-            }
-            None => {
-                println!("Illegal move!");
-                self.pretty_print(true);
-                None
-            }
+        if let Some(b) = self.is_king_safe() {
+            self.swap_side_to_move();
+            return Some(b);
+        } else {
+            println!("Illegal move!");
+            self.pretty_print(true);
+            return None;
         }
     }
 
     fn take_back_move(&mut self, mv: &BitMove) {
         // Restoring the board meta needs to happen before calls to self.side_to_move() and self.get_enpassant().
-        self.meta = mv.board_meta;
+        self.swap_side_to_move();
+        self.set_enpassant(mv.get_prior_enpassant());
+        self.set_castle_rights(mv.get_prior_castle_rights());
 
         // Undo castle moves.
         if mv.source_piece == PieceType::King {
@@ -373,9 +375,9 @@ impl ChessBoard for ArrayBoard {
         if verbose {
             println!(" ---------------- BOARD STATE ----------------- ");
             println!("  Board metadata in binary:");
-            let enpassant = (self.meta & (META_ENPASSANT_MASK << META_ENPASSANT)) >> META_ENPASSANT;
-            let castles = (self.meta & (META_CASTLE_MASK << META_CASTLE)) >> META_CASTLE;
-            let side_to_move = self.meta & 1;
+            let enpassant = self.get_enpassant();
+            let castles = self.get_castle_rights();
+            let side_to_move = self.side_to_move();
             println!(
                 "     {:06b} |  {:04b}  | {}",
                 enpassant, castles, side_to_move

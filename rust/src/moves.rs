@@ -26,7 +26,8 @@ pub struct BitMove {
 
     // Only moves that are generated during search will use this field. This is only stored here
     // to help in taking back moves and restoring prior state.
-    pub board_meta: u16,
+    pub prior_castle_rights: u8,
+    pub prior_enpassant: u8,
 }
 
 impl BitMove {
@@ -46,6 +47,22 @@ impl BitMove {
         self.meta & MOVE_PROMO > 0
     }
 
+    pub fn set_prior_castle_rights(&mut self, cr: u8) {
+        self.prior_castle_rights = cr;
+    }
+
+    pub fn set_prior_enpassant(&mut self, ep: u8) {
+        self.prior_enpassant = ep;
+    }
+
+    pub fn get_prior_castle_rights(&self) -> u8 {
+        self.prior_castle_rights
+    }
+
+    pub fn get_prior_enpassant(&self) -> u8 {
+        self.prior_enpassant
+    }
+
     pub fn from_string(mv: &str) -> BitMove {
         let source_square = algebraic_to_index(&mv[..2]) as u8;
         let dest_square = algebraic_to_index(&mv[2..4]) as u8;
@@ -63,7 +80,8 @@ impl BitMove {
             captured: PieceType::Empty,
             promote_to,
             meta: 0,
-            board_meta: 0,
+            prior_castle_rights: 0,
+            prior_enpassant: 0,
         }
     }
 
@@ -93,7 +111,8 @@ impl BitMove {
             captured: PieceType::Empty,
             promote_to,
             meta,
-            board_meta: 0,
+            prior_castle_rights: 0,
+            prior_enpassant: 0,
         }
     }
 
@@ -118,7 +137,8 @@ impl BitMove {
             promote_to,
             // Most Valuable Victim / Least Valuable Attacker
             meta: meta | (captured as u16 * 10 - attacker as u16),
-            board_meta: 0,
+            prior_castle_rights: 0,
+            prior_enpassant: 0,
         }
     }
 }

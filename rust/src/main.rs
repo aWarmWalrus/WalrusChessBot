@@ -17,73 +17,71 @@ use arrayboard::ArrayBoard;
 use chessboard::ChessBoard;
 use moves::BitMove;
 use piece::PieceType;
+use rand::Rng;
 use std::time::Instant;
 use test::Bencher;
 
 const DO_DEBUG: bool = false;
-const DO_PERFT: bool = true;
+const DO_PERFT: bool = false;
 
 const _TEST_CASE_1: &str = "position startpos moves e2e4 c7c5 g1f3 e7e6 d2d4 c5d4 f3d4 b8c6 b1c3 d8c7 d1d3 c6d4 d3d4 c7b6 d4b6 a7b6 c3b5 a8a4 f2f3 f8c5 c2c3 e8f8 b2b3";
 
-fn perft(board: &mut impl ChessBoard, max_depth: u32, depth: u32) -> (u32, u32, u32, u32, u32) {
+fn perft(
+    board: &mut impl ChessBoard,
+    max_depth: u32,
+    depth: u32,
+) -> Option<(u32, u32, u32, u32, u32)> {
     let (mut nodes, mut captures, mut castles, mut checks, mut promos) = (0, 0, 0, 0, 0);
     if depth == max_depth {
         nodes += 1;
         if board.is_king_checked() {
             checks += 1;
         }
-        return (nodes, captures, castles, checks, promos);
+        return Some((nodes, captures, castles, checks, promos));
     }
     for mut mv in board.generate_moves() {
         match board.make_move(&mut mv) {
             Some(true) => {
                 // println!("{}", &mv.to_string());
                 // new_board.pretty_print(true);
-                let (n, c1, c2, c3, p) = perft(board, max_depth, depth + 1);
-                nodes += n;
-                captures += c1;
-                castles += c2;
-                checks += c3;
-                promos += p;
+                if let Some((n, c1, c2, c3, p)) = perft(board, max_depth, depth + 1) {
+                    nodes += n;
+                    captures += c1;
+                    castles += c2;
+                    checks += c3;
+                    promos += p;
+                } else {
+                    println!("Move made: {}", mv.to_string());
+                    board.pretty_print(true);
+                    board.take_back_move(&mv);
+                    return None;
+                }
             }
             Some(false) => (),
             None => {
-                panic!("ILLEAGLE MOVEEAIOVJAWE");
+                board.take_back_move(&mv);
+                return None;
             }
         }
         board.take_back_move(&mv);
     }
-    (nodes, captures, castles, checks, promos)
+    Some((nodes, captures, castles, checks, promos))
 }
 
 fn main() {
     if DO_DEBUG {
-        let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
-        // let mut mv = BitMove::create(0o73, 0o74, PieceType::Queen, Some(PieceType::Queen), 0);
-        // println!("King safe? {}", board.make_move(&mut mv));
-        board.pretty_print(true);
-        board.print_legal_moves(true);
-
-        // let mut mv1 = BitMove::create(0o12, 0o32, PieceType::Pawn, None, 0);
-        // println!("King safe? {}", board.make_move(&mut mv1));
+        // let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
         // board.pretty_print(true);
-
-        // let mut mv2 =
-        //     BitMove::create_capture(0o33, 0o22, PieceType::Pawn, PieceType::Pawn, None, 0);
-        // println!("King safe? {}", board.make_move(&mut mv2));
-        // board.pretty_print(true);
-        //
-        // board.take_back_move(&mv2);
-        // board.pretty_print(true);
-        // board.take_back_move(&mv1);
-        // board.pretty_print(true);
-        // board.take_back_move(&mv);
-        // board.pretty_print(true);
+        // board.print_legal_moves(true);
+        let mut rng = rand::thread_rng();
+        for _ in 0..781 {
+            println!("{},", rng.gen::<u64>());
+        }
     } else if DO_PERFT {
         let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
         let start = Instant::now();
-        let depth = 3;
-        let (nodes, captures, castles, checks, promos) = perft(&mut board, depth, 0);
+        let depth = 5;
+        let (nodes, captures, castles, checks, promos) = perft(&mut board, depth, 0).unwrap();
         let tm = start.elapsed().as_millis();
         println!(
             "Perft({depth}) results: \n    \

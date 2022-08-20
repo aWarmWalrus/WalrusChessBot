@@ -1,5 +1,5 @@
 // use super::*;
-use crate::arrayboard::{ArrayBoard, BOARD_SIZE, META_CASTLE};
+use crate::arrayboard::{ArrayBoard, BOARD_SIZE};
 use crate::chessboard::ChessBoard;
 use crate::moves::{BitMove, MOVE_CAPTURE, MOVE_CASTLE, MOVE_CHECK, MOVE_PROMO};
 use crate::piece::{is_piece_white, piece_type, PieceType};
@@ -278,8 +278,8 @@ impl ArrayBoard {
     pub fn legal_castle_moves(&self) -> Vec<BitMove> {
         let mut moves = Vec::new();
         for shift in 0..2 {
-            let mask = 1 << (META_CASTLE + shift + if self.white_to_move() { 2 } else { 0 });
-            let castle = self.meta & mask;
+            let mask = 1 << (shift + if self.white_to_move() { 2 } else { 0 });
+            let castle = self.get_castle_rights() & mask;
             if castle == 0 {
                 continue;
             }
@@ -317,7 +317,7 @@ impl ArrayBoard {
             {
                 continue;
             }
-            moves.push(match castle >> META_CASTLE {
+            moves.push(match castle {
                 // e8g8 - black king-side
                 0b0001 => BitMove::create(0o04, 0o06, PieceType::King, None, MOVE_CASTLE),
                 // e8c8 - black queen-side

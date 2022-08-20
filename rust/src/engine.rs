@@ -396,6 +396,7 @@ pub fn search(
                     }
                 } else {
                     println!("Bad move!! {}", mv.to_string());
+                    board.take_back_move(&mv);
                     board.pretty_print(true);
                     return None;
                 }
@@ -403,6 +404,7 @@ pub fn search(
             Some(false) => (),
             None => {
                 println!("Bad move!! {}", mv.to_string());
+                board.take_back_move(&mv);
                 board.pretty_print(true);
                 return None;
             }
