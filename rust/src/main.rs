@@ -30,57 +30,71 @@ fn perft(
     board: &mut impl ChessBoard,
     max_depth: u32,
     depth: u32,
-) -> Option<(u32, u32, u32, u32, u32)> {
+) -> Result<(u32, u32, u32, u32, u32), String> {
     let (mut nodes, mut captures, mut castles, mut checks, mut promos) = (0, 0, 0, 0, 0);
     if depth == max_depth {
         nodes += 1;
         if board.is_king_checked() {
             checks += 1;
         }
-        return Some((nodes, captures, castles, checks, promos));
+        return Ok((nodes, captures, castles, checks, promos));
     }
     for mut mv in board.generate_moves() {
         match board.make_move(&mut mv) {
-            Some(true) => {
-                // println!("{}", &mv.to_string());
-                // new_board.pretty_print(true);
-                if let Some((n, c1, c2, c3, p)) = perft(board, max_depth, depth + 1) {
+            Ok(true) => match perft(board, max_depth, depth + 1) {
+                Ok((n, c1, c2, c3, p)) => {
                     nodes += n;
                     captures += c1;
                     castles += c2;
                     checks += c3;
                     promos += p;
-                } else {
+                }
+                Err(mut e) => {
                     println!("Move made: {}", mv.to_string());
                     board.pretty_print(true);
                     board.take_back_move(&mv);
-                    return None;
+                    e.push(' ');
+                    e.push_str(&mv.to_string());
+                    return Err(e);
                 }
-            }
-            Some(false) => (),
-            None => {
+            },
+            Ok(false) => (),
+            Err(mut e) => {
                 board.take_back_move(&mv);
-                return None;
+                e.push(' ');
+                e.push_str(&mv.to_string());
+                return Err(e);
             }
         }
         board.take_back_move(&mv);
     }
-    Some((nodes, captures, castles, checks, promos))
+    Ok((nodes, captures, castles, checks, promos))
 }
 
 fn main() {
     if DO_DEBUG {
         // let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
+        // // board.pretty_print(true);
+        // let mut mv_w = BitMove::create(0o64, 0o54, PieceType::Pawn, None, 0);
+        // let mut mv_b = BitMove::create(0o10, 0o20, PieceType::Pawn, None, 0);
+        // let mut mv_w1 = BitMove::create(0o63, 0o53, PieceType::Pawn, None, 0);
+        // let mut mv_b1 = BitMove::create(0o11, 0o21, PieceType::Pawn, None, 0);
+        //
+        // board.make_move(&mut mv_w1);
+        // board.make_move(&mut mv_b1);
+        // board.make_move(&mut mv_w);
+        // board.make_move(&mut mv_b);
         // board.pretty_print(true);
-        // board.print_legal_moves(true);
+
+        // UNCOMMENT THIS IF YOU WANT MORE RANDOM NUMBERS
         let mut rng = rand::thread_rng();
-        for _ in 0..781 {
+        for _ in 0..16 {
             println!("{},", rng.gen::<u64>());
         }
     } else if DO_PERFT {
         let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
         let start = Instant::now();
-        let depth = 5;
+        let depth = 6;
         let (nodes, captures, castles, checks, promos) = perft(&mut board, depth, 0).unwrap();
         let tm = start.elapsed().as_millis();
         println!(
@@ -119,7 +133,9 @@ fn init_startpos_50_moves(b: &mut Bencher) {
     b.iter(|| {
         let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
         for mv in moves50.clone() {
-            board.make_move(&mut BitMove::from_string(mv));
+            if let Err(e) = board.make_move(&mut BitMove::from_string(mv)) {
+                panic!("{}", e);
+            };
         }
     });
 }
@@ -131,7 +147,9 @@ fn init_startpos_100_moves(b: &mut Bencher) {
     b.iter(|| {
         let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
         for mv in moves100.clone() {
-            board.make_move(&mut BitMove::from_string(mv));
+            if let Err(e) = board.make_move(&mut BitMove::from_string(mv)) {
+                panic!("{}", e);
+            }
         }
     });
 }
@@ -140,6 +158,8 @@ fn init_startpos_100_moves(b: &mut Bencher) {
 fn perft_depth_3(b: &mut Bencher) {
     b.iter(|| {
         let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
-        perft(&mut board, 3, 0);
+        if let Err(e) = perft(&mut board, 3, 0) {
+            panic!("{}", e);
+        }
     });
 }

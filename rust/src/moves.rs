@@ -35,15 +35,15 @@ impl BitMove {
         self.meta & MOVE_CAPTURE > 0
     }
 
-    pub fn is_check(&self) -> bool {
+    pub fn _is_check(&self) -> bool {
         self.meta & MOVE_CHECK > 0
     }
 
-    pub fn is_castle(&self) -> bool {
+    pub fn _is_castle(&self) -> bool {
         self.meta & MOVE_CASTLE > 0
     }
 
-    pub fn is_promo(&self) -> bool {
+    pub fn _is_promo(&self) -> bool {
         self.meta & MOVE_PROMO > 0
     }
 
@@ -73,6 +73,8 @@ impl BitMove {
             Some('n') => Some(PieceType::Knight),
             _ => None,
         };
+        // I think my bug is somewhere here.... our hash is behaving differently depending on if
+        // it's a from_string() bitmove or a generated bitmove.
         BitMove {
             source_square,
             dest_square,

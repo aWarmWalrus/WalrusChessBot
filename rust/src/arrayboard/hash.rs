@@ -1,36 +1,6 @@
-const RANDOM_VALUES: [u64; 781] = [
-    9404911916277948029,
-    5435184576573100647,
-    10046488327844499835,
-    16793508011023393365,
-    15132428781206972622,
-    11753207474926095205,
-    15572765314392693210,
-    3738322552880228146,
-    6961938613181884633,
-    13396700342643229461,
-    14175414949814926119,
-    13881503382856271456,
-    2796470504014199019,
-    14224422430500619090,
-    10671574399555406963,
-    6225848099511346246,
-    8686438758638253168,
-    8031177703112982972,
-    15777115831086110349,
-    1423508510796812845,
-    13934495029963427749,
-    8676328036940198312,
-    10429066089930214354,
-    18132925607647010411,
-    1447205560969885272,
-    10460341819372552978,
-    9377191155381410492,
-    7953361641306963563,
-    18266055634435338536,
-    9070550311594325080,
-    16851193794031159523,
-    3290054083194918182,
+use crate::piece::{piece_type, PieceType};
+
+const PIECE_SQUARE_VALUES: [u64; 736] = [
     16270727204623936583,
     6745603412284927352,
     15861665345494806169,
@@ -767,14 +737,99 @@ const RANDOM_VALUES: [u64; 781] = [
     9731944902900790097,
     11560902892353565768,
     3206640100493458191,
-    11046431588469641581,
-    6078838962871566607,
-    893378162570482250,
-    14143258301647254666,
-    10537600310118389200,
-    6717391549473180562,
-    1818824637924724315,
-    3534547674548647779,
-    4574580850968380983,
-    5328594042983095164,
 ];
+
+const SEED: u64 = 4358979348738523823;
+const SIDE_TO_MOVE: u64 = 6012934856394834233;
+const CASTLE_RIGHTS: [u64; 16] = [
+    7396512047044821290,
+    3856622725498071919,
+    8824779268271327806,
+    17815081531308031988,
+    147384730100802552,
+    1510629138993448394,
+    4328122763908840357,
+    4829324335028393182,
+    18038770440826348028,
+    6135715231044771689,
+    8774942558521314889,
+    15884884693947703056,
+    11346812261607259108,
+    11242360099382390371,
+    1248872444874553170,
+    15266933966999412345,
+];
+const ENPASSANT: [u64; 8] = [
+    4345509870086807849,
+    8107547990543365062,
+    2691086430151438761,
+    1916239738072280582,
+    13958099368800330946,
+    77535870290397597,
+    9203140695867980400,
+    17305182826536410005,
+];
+
+pub fn initial_hash() -> u64 {
+    SEED
+}
+
+// Piece side is at 0 bit, and empty piece type is equal to 0. Thus here are the piece bit values:
+//  0, 1: empty      0000,  0001
+//  2: black pawn    0010
+//  3: white pawn    0011
+//  4: black knight  0100
+//  5: white knight  0101
+//  6: black bishop
+//  7: white bishop
+//  8: black rook
+//  9: white rook
+// 10: black queen
+// 11: white queen
+// 12: black king
+// 13: white king
+// And each piece gets 64 hashes, one for each square it can possibly occupy. The exceptions are
+// pawns--since they can't occupy 1st and 8th rank, they only have 48 hashes. Thus the addresses
+// are as follows:
+//   0..47:  black pawn hashes
+//  48..95:  white pawn hashes
+//  96..159: black knight hashes
+// 160..223: white knight hashes
+// 224..287: black bishop hashes
+// 288..351: white bishop hashes
+// and so forth.
+pub fn hash_piece(hash: u64, piece_bits: u8, index: usize) -> u64 {
+    let i = match piece_type(piece_bits as u32) {
+        PieceType::Pawn => (piece_bits - 2) * 48 + (index as u8 - 8),
+        _ => 96 + (piece_bits - 4) * 64 + (index as u8),
+    } as usize;
+    hash ^ PIECE_SQUARE_VALUES[i]
+}
+
+pub fn hash_side_to_move(hash: u64) -> u64 {
+    hash ^ SIDE_TO_MOVE
+}
+
+pub fn hash_castle_rights(hash: u64, old: u8, new: u8) -> u64 {
+    // Even though xor is its own inverse, save 2 memory lookups maybe by avoiding the hashing?
+    if old == new {
+        hash
+    } else {
+        hash ^ CASTLE_RIGHTS[old as usize] ^ CASTLE_RIGHTS[new as usize]
+    }
+}
+
+pub fn hash_enpassant(mut hash: u64, old: u8, new: u8) -> u64 {
+    let old_col = 0b111 & old as usize;
+    let new_col = 0b111 & new as usize;
+    if old_col == new_col {
+        return hash;
+    }
+    if old != 0 {
+        hash = hash ^ ENPASSANT[old_col];
+    }
+    if new != 0 {
+        hash = hash ^ ENPASSANT[new_col];
+    }
+    hash
+}

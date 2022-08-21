@@ -269,16 +269,16 @@ fn quiesce(
     mut alpha: i64,
     beta: i64,
     depth: u8,
-) -> Option<(i64, u64)> {
+) -> Result<(i64, u64), String> {
     let val = eval(board);
     if val >= beta {
-        return Some((beta, 1));
+        return Ok((beta, 1));
     }
     if val > alpha {
         alpha = val;
     }
     if depth == MAX_QUIESCE_DEPTH {
-        return Some((alpha, 1));
+        return Ok((alpha, 1));
     }
     let mut nodes = 1;
     for mut mv in board.generate_moves() {
@@ -286,52 +286,63 @@ fn quiesce(
             continue;
         }
         match board.make_move(&mut mv) {
-            Some(true) => {
-                if let Some((q_score, q_nodes)) = quiesce(board, -beta, -alpha, depth + 1) {
-                    board.take_back_move(&mv);
+            Ok(true) => {
+                if let Ok((q_score, q_nodes)) = quiesce(board, -beta, -alpha, depth + 1) {
                     nodes += q_nodes;
                     if -q_score >= beta {
                         board.take_back_move(&mv);
-                        return Some((beta, nodes));
+                        return Ok((beta, nodes));
                     }
                     if -q_score > alpha {
                         alpha = -q_score;
                     }
                 }
             }
-            Some(false) => (),
-            None => {
+            Ok(false) => (),
+            Err(mut e) => {
+                board.take_back_move(&mv);
                 println!("Bad move!! {}", mv.to_string());
                 board.pretty_print(true);
-                return None;
+                e.push(' ');
+                e.push_str(&mv.to_string());
+                return Err(e);
             }
         }
         board.take_back_move(&mv);
     }
 
-    return Some((alpha, nodes));
+    return Ok((alpha, nodes));
 }
 
-fn increment_board_hist(hash: u64, hist_data: &mut HashMap<u64, u8>) -> u8 {
-    match hist_data.get_mut(&hash) {
-        Some(count) => {
-            *count += 1;
-            *count
-        }
-        None => {
-            hist_data.insert(hash, 1);
-            1
+fn increment_board_hist(hash: u64, hist_data: &mut Vec<u64>) -> u8 {
+    hist_data.push(hash);
+
+    let mut count = 0;
+    for hist in hist_data.iter().rev().step_by(2) {
+        if *hist == hash {
+            count += 1;
         }
     }
+    count
 }
 
-fn decrement_board_hist(hash: u64, hist_data: &mut HashMap<u64, u8>) {
-    let c = hist_data.get_mut(&hash).unwrap();
-    if *c == 0 {
-        hist_data.remove(&hash);
-    } else {
-        *c -= 1;
+fn decrement_board_hist(hash: u64, hist_data: &mut Vec<u64>) -> Result<(), String> {
+    if let Some(hist) = hist_data.pop() {
+        if hist != hash {
+            let all_hist = hist_data.iter().fold(String::from(""), |mut acc, it| {
+                acc.push_str(format!("|  {}  ", it % 1000000).as_str());
+                return acc;
+            });
+            return Err(format!(
+                "popped hash ({}) does not match decremented hash ({}).\nhist_data contents: {}\nMove stack:",
+                hist % 1000000,
+                hash % 1000000,
+                all_hist,
+            ));
+        }
+        return Ok(());
     }
+    Err(String::from("hist_data is empty!! Move stack:"))
 }
 
 pub fn search(
@@ -339,25 +350,36 @@ pub fn search(
     mut alpha: i64,
     beta: i64,
     depth: u8,
-    hist_data: &mut HashMap<u64, u8>,
-) -> Option<(String, i64, u64)> {
+    hist_data: &mut Vec<u64>,
+) -> Result<(String, i64, u64), String> {
     if depth == MAX_DEPTH.load(Ordering::Relaxed) {
         if QUIESCE {
-            if let Some((quiesce_score, quiesce_nodes)) = quiesce(board, alpha, beta, 0) {
-                return Some(("".to_string(), quiesce_score, quiesce_nodes));
+            match quiesce(board, alpha, beta, 0) {
+                Ok((quiesce_score, quiesce_nodes)) => {
+                    return Ok(("".to_string(), quiesce_score, quiesce_nodes));
+                }
+                Err(e) => {
+                    return Err(e);
+                }
             }
-            return None;
         }
-        return Some((String::from(""), eval(board), 1));
+        return Ok((String::from(""), eval(board), 1));
     }
     let moves = board.generate_moves();
 
-    let hash = board.hash();
+    let hash = board.get_hash();
     let reps = increment_board_hist(hash, hist_data);
     // 3-fold stalemate.
-    if reps >= 3 && false {
-        decrement_board_hist(hash, hist_data);
-        return Some(("".to_string(), 0, 1));
+    if reps >= 3 {
+        if let Err(e) = decrement_board_hist(hash, hist_data) {
+            return Err(e);
+        }
+        // It's a stalemate. For some reason, lichess sends us one last 'go' command, so just
+        // return the first move we have.
+        if moves.len() > 0 {
+            return Ok((moves[0].to_string(), 0, 1));
+        }
+        return Ok(("".to_string(), 0, 1));
     }
 
     let mut nodes = 1;
@@ -373,53 +395,65 @@ pub fn search(
         if depth == 0 {
             println!("info currmove {} currmovenumber {i}", mv.to_string());
         }
-        // Check HERE if the move is legal (i.e. king is not in check after making this move).
         match board.make_move(&mut mv) {
-            Some(true) => {
+            Ok(true) => {
                 legal_moves += 1;
-                if let Some((pv, score, child_nodes)) =
-                    search(board, -beta, -alpha, depth + 1, hist_data)
-                {
-                    nodes += child_nodes;
-
-                    if -score >= beta {
-                        // decrement_board_hist(hash, hist_data);
-                        board.take_back_move(&mv);
-                        return Some((mv.to_string() + " " + &pv, beta, nodes));
-                    }
-                    if -score > alpha {
-                        alpha = -score;
-                        best_pv = mv.to_string() + " " + &pv.to_string();
-                        if depth == 0 {
-                            print_info(-score, nodes, start_time.unwrap(), &best_pv);
+                match search(board, -beta, -alpha, depth + 1, hist_data) {
+                    Ok((pv, score, child_nodes)) => {
+                        nodes += child_nodes;
+                        if -score >= beta {
+                            if let Err(mut e) = decrement_board_hist(hash, hist_data) {
+                                board.take_back_move(&mv);
+                                e.push(' ');
+                                e.push_str(&mv.to_string());
+                                return Err(e);
+                            }
+                            board.take_back_move(&mv);
+                            return Ok((mv.to_string() + " " + &pv, beta, nodes));
+                        }
+                        if -score > alpha {
+                            alpha = -score;
+                            best_pv = mv.to_string() + " " + &pv.to_string();
+                            if depth == 0 {
+                                print_info(-score, nodes, start_time.unwrap(), &best_pv);
+                            }
                         }
                     }
-                } else {
-                    println!("Bad move!! {}", mv.to_string());
-                    board.take_back_move(&mv);
-                    board.pretty_print(true);
-                    return None;
+                    Err(mut e) => {
+                        println!("Bad move!! {}", mv.to_string());
+                        board.take_back_move(&mv);
+                        board.pretty_print(true);
+                        e.push(' ');
+                        e.push_str(&mv.to_string());
+                        return Err(e);
+                    }
                 }
             }
-            Some(false) => (),
-            None => {
+            Ok(false) => (),
+            Err(mut e) => {
                 println!("Bad move!! {}", mv.to_string());
                 board.take_back_move(&mv);
                 board.pretty_print(true);
-                return None;
+                e.push(' ');
+                e.push_str(&mv.to_string());
+                return Err(e);
             }
         }
         board.take_back_move(&mv);
     }
     if legal_moves == 0 {
+        if let Err(e) = decrement_board_hist(hash, hist_data) {
+            return Err(e);
+        }
         if board.is_king_checked() {
             // let mut line = String::new();
             // let _res = std::io::stdin().read_line(&mut line);
-            return Some(("".to_string(), -CHECKMATE + depth as i64, 1));
+            return Ok(("".to_string(), -CHECKMATE + depth as i64, 1));
         }
-        // println!("{}<< STALEMATE", "  ".repeat(depth as usize));
-        return Some(("".to_string(), 0, 1));
+        return Ok(("".to_string(), 0, 1));
     }
-    // decrement_board_hist(hash, hist_data);
-    Some((best_pv, alpha, nodes))
+    if let Err(e) = decrement_board_hist(hash, hist_data) {
+        return Err(e);
+    }
+    Ok((best_pv, alpha, nodes))
 }

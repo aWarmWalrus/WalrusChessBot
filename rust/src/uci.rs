@@ -12,7 +12,7 @@ use std::time::Instant;
 fn go(
     board: &mut impl ChessBoard,
     book_moves_opt: &Option<&BookMoves>,
-    hist_data: &mut HashMap<u64, u8>,
+    hist_data: &mut Vec<u64>,
     wtime: Option<u32>,
     btime: Option<u32>,
 ) {
@@ -46,26 +46,29 @@ fn go(
     }
 
     let start = Instant::now();
-    if let Some((best, _score, nodes)) = engine::search(
+    match engine::search(
         board,
         /* alpha= */ i32::MIN as i64,
         /* beta= */ i32::MAX as i64,
         /* depth=*/ 0,
         hist_data,
     ) {
-        let tm = start.elapsed().as_millis();
-        println!(
-            "info nodes {nodes} time {tm} nps {}",
-            (nodes as f64 / (tm as f64 / 1000.0)) as u64
-        );
-        if best.is_empty() {
-            board.pretty_print(true);
-            println!("ERROR: no moves possible");
-        } else {
-            println!("bestmove {}", best.split_whitespace().nth(0).unwrap());
+        Ok((best, _score, nodes)) => {
+            let tm = start.elapsed().as_millis();
+            println!(
+                "info nodes {nodes} time {tm} nps {}",
+                (nodes as f64 / (tm as f64 / 1000.0)) as u64
+            );
+            if best.is_empty() {
+                board.pretty_print(true);
+                println!("ERROR: no moves possible");
+            } else {
+                println!("bestmove {}", best.split_whitespace().nth(0).unwrap());
+            }
         }
-    } else {
-        panic!("ILLEGAL MOVESASAASDF");
+        Err(e) => {
+            panic!("{}", e);
+        }
     }
 }
 
@@ -74,7 +77,7 @@ pub fn run() {
     let mut book_moves_tracker: Option<&BookMoves> = Some(&book_moves_root);
 
     let mut board_opt: Option<ArrayBoard> = None;
-    let mut hist_data: HashMap<u64, u8> = HashMap::new();
+    let mut hist_data: Vec<u64> = Vec::new();
     loop {
         let mut buffer = String::new();
         let result = io::stdin().read_line(&mut buffer);
@@ -131,14 +134,14 @@ pub fn run() {
                                     Some(bm) => bm.get_child(mv),
                                     None => None,
                                 };
-                                board.make_move(&mut BitMove::from_string(mv));
-                                let hash = board.hash();
-                                if hist_data.contains_key(&hash) {
-                                    *hist_data.get_mut(&hash).unwrap() += 1;
-                                } else {
-                                    hist_data.insert(hash, 1);
+                                if let Err(e) = board.make_move(&mut BitMove::from_string(mv)) {
+                                    panic!("{}", e);
                                 }
+                                hist_data.push(board.get_hash());
                             });
+                            // CODE SMELL ALERT. Pop last one off, since the first thing we do in
+                            // the search is to increment the given board state.
+                            hist_data.pop();
                         }
                         Some(board)
                     }
@@ -154,20 +157,17 @@ pub fn run() {
                     wtime = Some(instructions[2].parse::<u32>().unwrap());
                     btime = Some(instructions[4].parse::<u32>().unwrap());
                 }
-                if board_opt.is_none() {
-                    println!("ERROR: No board has been initialized yet. Use 'position'.");
-                    return;
+                match &mut board_opt {
+                    None => {
+                        println!("ERROR: No board has been initialized yet. Use 'position'.");
+                    }
+                    Some(board) => {
+                        go(board, &book_moves_tracker, &mut hist_data, wtime, btime);
+                    }
                 }
-                go(
-                    &mut board_opt.unwrap(),
-                    &book_moves_tracker,
-                    &mut hist_data,
-                    wtime,
-                    btime,
-                );
             }
             "print" => {
-                match board_opt {
+                match &board_opt {
                     Some(b) => {
                         b.pretty_print(true);
                         b.print_legal_moves(false);
