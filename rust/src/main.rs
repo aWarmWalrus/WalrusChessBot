@@ -8,57 +8,102 @@ extern crate num_derive;
 mod arrayboard;
 mod book_moves;
 mod engine;
+mod moves;
+mod piece;
 mod uci;
 
 use arrayboard::ArrayBoard;
-use arrayboard::BitMove;
+use chessboard::ChessBoard;
+use moves::BitMove;
+use piece::PieceType;
+use rand::Rng;
 use std::time::Instant;
 use test::Bencher;
 
-const DO_PERFT: bool = true;
+const DO_DEBUG: bool = false;
+const DO_PERFT: bool = false;
 
 const _TEST_CASE_1: &str = "position startpos moves e2e4 c7c5 g1f3 e7e6 d2d4 c5d4 f3d4 b8c6 b1c3 d8c7 d1d3 c6d4 d3d4 c7b6 d4b6 a7b6 c3b5 a8a4 f2f3 f8c5 c2c3 e8f8 b2b3";
 
-fn perft(board: ArrayBoard, max_depth: u32, depth: u32) -> (u32, u32, u32, u32, u32) {
+fn perft(
+    board: &mut impl ChessBoard,
+    max_depth: u32,
+    depth: u32,
+) -> Result<(u32, u32, u32, u32, u32), String> {
     let (mut nodes, mut captures, mut castles, mut checks, mut promos) = (0, 0, 0, 0, 0);
-    if depth == (max_depth - 1) {
-        for mv in board.generate_moves() {
-            nodes += 1;
-            if mv.meta & arrayboard::generate_moves::MOVE_CAPTURE > 0 {
-                captures += 1;
-            }
-            if mv.meta & arrayboard::generate_moves::MOVE_CASTLE > 0 {
-                castles += 1;
-            }
-            if mv.meta & arrayboard::generate_moves::MOVE_CHECK > 0 {
-                checks += 1;
-            }
-            if mv.meta & arrayboard::generate_moves::MOVE_PROMO > 0 {
-                promos += 1;
+    if depth == max_depth {
+        nodes += 1;
+        if board.is_king_checked() {
+            checks += 1;
+        }
+        return Ok((nodes, captures, castles, checks, promos));
+    }
+    for mut mv in board.generate_moves() {
+        match board.make_move(&mut mv) {
+            Ok(true) => match perft(board, max_depth, depth + 1) {
+                Ok((n, c1, c2, c3, p)) => {
+                    nodes += n;
+                    captures += c1;
+                    castles += c2;
+                    checks += c3;
+                    promos += p;
+                }
+                Err(mut e) => {
+                    println!("Move made: {}", mv.to_string());
+                    board.pretty_print(true);
+                    board.take_back_move(&mv);
+                    e.push(' ');
+                    e.push_str(&mv.to_string());
+                    return Err(e);
+                }
+            },
+            Ok(false) => (),
+            Err(mut e) => {
+                board.take_back_move(&mv);
+                e.push(' ');
+                e.push_str(&mv.to_string());
+                return Err(e);
             }
         }
-        return (nodes, captures, castles, checks, promos);
+        board.take_back_move(&mv);
     }
-    for mv in board.generate_moves() {
-        let new_board = board.make_move(&mv);
-        // println!("{}", &mv.to_string());
-        // new_board.pretty_print(true);
-        let (n, c1, c2, c3, p) = perft(new_board, max_depth, depth + 1);
-        nodes += n;
-        captures += c1;
-        castles += c2;
-        checks += c3;
-        promos += p;
-    }
-    (nodes, captures, castles, checks, promos)
+    Ok((nodes, captures, castles, checks, promos))
 }
 
 fn main() {
-    if DO_PERFT {
-        let board = ArrayBoard::create_from_fen(arrayboard::PERFT2_FEN);
+    if DO_DEBUG {
+        let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
+        board.pretty_print(true);
+        let mut mv_w = BitMove::create(0o64, 0o54, PieceType::Pawn, None, 0);
+        let mut mv_b = BitMove::create(0o10, 0o20, PieceType::Pawn, None, 0);
+        let mut mv_w1 = BitMove::create(0o63, 0o53, PieceType::Pawn, None, 0);
+        let mut mv_b1 = BitMove::create(0o11, 0o21, PieceType::Pawn, None, 0);
+
+        board.make_move(&mut mv_w1);
+        board.make_move(&mut mv_b1);
+        board.make_move(&mut mv_w);
+        board.make_move(&mut mv_b);
+        board.pretty_print(true);
+
+        board.take_back_move(&mut mv_b);
+        board.pretty_print(true);
+        board.take_back_move(&mut mv_w);
+        board.pretty_print(true);
+        board.take_back_move(&mut mv_b1);
+        board.pretty_print(true);
+        board.take_back_move(&mut mv_w1);
+        board.pretty_print(true);
+
+        // UNCOMMENT THIS IF YOU WANT MORE RANDOM NUMBERS
+        // let mut rng = rand::thread_rng();
+        // for _ in 0..16 {
+        //     println!("{},", rng.gen::<u64>());
+        // }
+    } else if DO_PERFT {
+        let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
         let start = Instant::now();
-        let depth = 5;
-        let (nodes, captures, castles, checks, promos) = perft(board, depth, 0);
+        let depth = 6;
+        let (nodes, captures, castles, checks, promos) = perft(&mut board, depth, 0).unwrap();
         let tm = start.elapsed().as_millis();
         println!(
             "Perft({depth}) results: \n    \
@@ -96,7 +141,9 @@ fn init_startpos_50_moves(b: &mut Bencher) {
     b.iter(|| {
         let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
         for mv in moves50.clone() {
-            board = board.make_move(&BitMove::from_string(mv));
+            if let Err(e) = board.make_move(&mut BitMove::from_string(mv)) {
+                panic!("{}", e);
+            };
         }
     });
 }
@@ -108,7 +155,9 @@ fn init_startpos_100_moves(b: &mut Bencher) {
     b.iter(|| {
         let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
         for mv in moves100.clone() {
-            board = board.make_move(&BitMove::from_string(mv));
+            if let Err(e) = board.make_move(&mut BitMove::from_string(mv)) {
+                panic!("{}", e);
+            }
         }
     });
 }
@@ -116,7 +165,9 @@ fn init_startpos_100_moves(b: &mut Bencher) {
 #[bench]
 fn perft_depth_3(b: &mut Bencher) {
     b.iter(|| {
-        let board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
-        perft(board, 3, 0);
+        let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
+        if let Err(e) = perft(&mut board, 3, 0) {
+            panic!("{}", e);
+        }
     });
 }

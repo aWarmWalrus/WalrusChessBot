@@ -1,4 +1,7 @@
-use super::arrayboard::{generate_moves::MOVE_CAPTURE, is_piece_white, ArrayBoard, BitMove};
+use crate::arrayboard::ArrayBoard;
+use crate::chessboard::ChessBoard;
+use crate::moves::BitMove;
+use crate::piece::is_piece_white;
 use std::cmp;
 use std::collections::HashMap;
 use std::io;
@@ -261,56 +264,70 @@ fn eval(board: ArrayBoard) -> i64 {
     (mg_phase * mg_score + eg_phase * eg_score) / 24
 }
 
-fn quiesce(board: ArrayBoard, mut alpha: i64, beta: i64, depth: u8) -> (i64, u64) {
+fn quiesce(
+    board: &mut impl ChessBoard,
+    mut alpha: i64,
+    beta: i64,
+    depth: u8,
+) -> Result<(i64, u64), String> {
     let val = eval(board);
     if val >= beta {
-        return (beta, 1);
+        return Ok((beta, 1));
     }
     if val > alpha {
         alpha = val;
     }
     if depth == MAX_QUIESCE_DEPTH {
-        return (alpha, 1);
+        return Ok((alpha, 1));
     }
     let mut nodes = 1;
-    for mv in board.generate_moves() {
-        if mv.meta & MOVE_CAPTURE == 0 {
+    for mut mv in board.generate_moves() {
+        if !mv.is_capture() {
             continue;
         }
-        let new_board = board.make_move(&mv);
-        let (q_score, q_nodes) = quiesce(new_board, -beta, -alpha, depth + 1);
-        nodes += q_nodes;
-        if -q_score >= beta {
-            return (beta, nodes);
+        match board.make_move(&mut mv) {
+            Ok(true) => match quiesce(board, -beta, -alpha, depth + 1) {
+                Ok((q_score, q_nodes)) => {
+                    nodes += q_nodes;
+                    if -q_score >= beta {
+                        if let Err(mut e) = board.take_back_move(&mv) {
+                            panic!("QUIESCE A {}", e);
+                            e.push(' ');
+                            e.push_str(&mv.to_string());
+                            return Err(e);
+                        }
+                        return Ok((beta, nodes));
+                    }
+                    if -q_score > alpha {
+                        alpha = -q_score;
+                    }
+                }
+                Err(e) => {
+                    if let Err(e) = board.take_back_move(&mv) {
+                        panic!("QUIESCE B {}", e);
+                    }
+                    return Err(e);
+                }
+            },
+            Ok(false) => (),
+            Err(mut e) => {
+                if let Err(e) = board.take_back_move(&mv) {
+                    panic!("QUIESCE C {}", e);
+                }
+                println!("Bad move!! {}", mv.to_string());
+                board.pretty_print(true);
+                e.push(' ');
+                e.push_str(&mv.to_string());
+                return Err(e);
+            }
         }
-        if -q_score > alpha {
-            alpha = -q_score;
+        if let Err(e) = board.take_back_move(&mv) {
+            board.pretty_print(true);
+            panic!("QUIESCE D {}", e);
         }
     }
 
-    return (alpha, nodes);
-}
-
-fn increment_board_hist(board: ArrayBoard, hist_data: &mut HashMap<ArrayBoard, u8>) -> u8 {
-    match hist_data.get_mut(&board) {
-        Some(count) => {
-            *count += 1;
-            *count
-        }
-        None => {
-            hist_data.insert(board, 1);
-            1
-        }
-    }
-}
-
-fn decrement_board_hist(board: &ArrayBoard, hist_data: &mut HashMap<ArrayBoard, u8>) {
-    let c = hist_data.get_mut(board).unwrap();
-    if *c == 0 {
-        hist_data.remove(board);
-    } else {
-        *c -= 1;
-    }
+    return Ok((alpha, nodes));
 }
 
 pub fn search(
@@ -318,35 +335,19 @@ pub fn search(
     mut alpha: i64,
     beta: i64,
     depth: u8,
-    hist_data: &mut HashMap<ArrayBoard, u8>,
-) -> (String, i64, u64) {
+) -> Result<(String, i64, u64), String> {
     if depth == MAX_DEPTH.load(Ordering::Relaxed) {
         if QUIESCE {
-            let (quiesce_score, quiesce_nodes) = quiesce(board, alpha, beta, 0);
-            return ("".to_string(), quiesce_score, quiesce_nodes);
+            match quiesce(board, alpha, beta, 0) {
+                Ok((quiesce_score, quiesce_nodes)) => {
+                    return Ok(("".to_string(), quiesce_score, quiesce_nodes));
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
         }
-        return (String::from(""), eval(board), 1);
-    }
-    let moves = board.generate_moves();
-    if moves.len() == 0 {
-        if board.is_king_checked() {
-            // let mut line = String::new();
-            // let _res = std::io::stdin().read_line(&mut line);
-            return ("".to_string(), -CHECKMATE + depth as i64, 1);
-        }
-        // println!("{}<< STALEMATE", "  ".repeat(depth as usize));
-        return ("".to_string(), 0, 1);
-    }
-    let reps = increment_board_hist(board, hist_data);
-    // 3-fold stalemate.
-    if reps >= 3 {
-        decrement_board_hist(&board, hist_data);
-        // It's a stalemate. For some reason, lichess sends us one last 'go' command, so just
-        // return the first move we have.
-        if moves.len() > 0 {
-            return (moves[0].to_string(), 0, 1);
-        }
-        return ("".to_string(), 0, 1);
+        return Ok((String::from(""), eval(board), 1));
     }
 
     let mut nodes = 1;
@@ -357,26 +358,74 @@ pub fn search(
         None
     };
 
-    for (i, mv) in moves.into_iter().enumerate() {
+    let mut legal_moves = 0;
+    for (i, mut mv) in board.generate_moves().into_iter().enumerate() {
         if depth == 0 {
             println!("info currmove {} currmovenumber {i}", mv.to_string());
         }
-        let new_board = board.make_move(&mv);
-        let (pv, score, child_nodes) = search(new_board, -beta, -alpha, depth + 1, hist_data);
-        nodes += child_nodes;
-
-        if -score >= beta {
-            decrement_board_hist(&board, hist_data);
-            return (mv.to_string() + " " + &pv, beta, nodes);
-        }
-        if -score > alpha {
-            alpha = -score;
-            best_pv = mv.to_string() + " " + &pv.to_string();
-            if depth == 0 {
-                print_info(-score, nodes, start_time.unwrap(), &best_pv);
+        match board.make_move(&mut mv) {
+            Ok(true) => {
+                legal_moves += 1;
+                if board.repetitions() >= 3 {
+                    if let Err(mut e) = board.take_back_move(&mv) {
+                        e.push(' ');
+                        e.push_str(&mv.to_string());
+                        return Err(e);
+                    }
+                    return Ok((mv.to_string(), 0, nodes));
+                }
+                match search(board, -beta, -alpha, depth + 1) {
+                    Ok((pv, score, child_nodes)) => {
+                        nodes += child_nodes;
+                        if -score >= beta {
+                            if let Err(mut e) = board.take_back_move(&mv) {
+                                e.push(' ');
+                                e.push_str(&mv.to_string());
+                                return Err(e);
+                            }
+                            return Ok((mv.to_string() + " " + &pv, beta, nodes));
+                        }
+                        if -score > alpha {
+                            alpha = -score;
+                            best_pv = mv.to_string() + " " + &pv.to_string();
+                            if depth == 0 {
+                                print_info(-score, nodes, start_time.unwrap(), &best_pv);
+                            }
+                        }
+                    }
+                    Err(mut e) => {
+                        println!("Bad move!! {}", mv.to_string());
+                        board.take_back_move(&mv);
+                        board.pretty_print(true);
+                        e.push(' ');
+                        e.push_str(&mv.to_string());
+                        return Err(e);
+                    }
+                }
+            }
+            Ok(false) => (),
+            Err(mut e) => {
+                println!("Bad move!! {}", mv.to_string());
+                board.take_back_move(&mv);
+                board.pretty_print(true);
+                e.push(' ');
+                e.push_str(&mv.to_string());
+                return Err(e);
             }
         }
+        if let Err(mut e) = board.take_back_move(&mv) {
+            e.push(' ');
+            e.push_str(&mv.to_string());
+            return Err(e);
+        }
     }
-    decrement_board_hist(&board, hist_data);
-    (best_pv, alpha, nodes)
+    if legal_moves == 0 {
+        if board.is_king_checked() {
+            // let mut line = String::new();
+            // let _res = std::io::stdin().read_line(&mut line);
+            return Ok(("".to_string(), -CHECKMATE + depth as i64, 1));
+        }
+        return Ok(("".to_string(), 0, 1));
+    }
+    Ok((best_pv, alpha, nodes))
 }

@@ -1,4 +1,8 @@
-use super::*;
+// use super::*;
+use crate::arrayboard::{ArrayBoard, BOARD_SIZE};
+use crate::chessboard::ChessBoard;
+use crate::moves::{BitMove, MOVE_CAPTURE, MOVE_CASTLE, MOVE_CHECK, MOVE_PROMO};
+use crate::piece::{is_piece_white, piece_type, PieceType};
 
 const EMPTY: [(i8, i8); 8] = [
     (0, 0),
@@ -64,12 +68,6 @@ const PROMOTIONS: [PieceType; 4] = [
     PieceType::Queen,
 ];
 
-// Move meta bits
-pub const MOVE_CAPTURE: u16 = 0b0000100000000;
-pub const MOVE_CHECK: u16 = 0b0001000000000;
-pub const MOVE_CASTLE: u16 = 0b0010000000000;
-pub const MOVE_PROMO: u16 = 0b0100000000000;
-
 // Returns the index and a bool. The returned bool is true iff the computed result
 // is out of bounds.
 fn index_plus_coord(index: i8, coord: (i8, i8)) -> (usize, bool) {
@@ -86,16 +84,6 @@ fn is_back_rank(index: usize) -> bool {
 }
 
 impl ArrayBoard {
-    fn find_piece(&self, piece: u8) -> u32 {
-        for i in 0..64 {
-            if self.board[i] == piece {
-                return i as u32;
-            }
-        }
-        self.pretty_print(true);
-        panic!("Piece not found on board {:0b}", piece);
-    }
-
     fn legal_moves_for_pawn(&self, index: u8) -> Vec<BitMove> {
         let mut moves = Vec::new();
         let forward = if self.white_to_move() { -1 } else { 1 };
@@ -113,8 +101,8 @@ impl ArrayBoard {
                         moves.push(BitMove::create_capture(
                             index,
                             dest_index as u8,
-                            /* attacker= */ promote_to as u16,
-                            /* victim= */ piece_type(dest_piece) as u16,
+                            /* source_piece = */ PieceType::Pawn,
+                            /* captured = */ piece_type(dest_piece),
                             Some(promote_to),
                             MOVE_PROMO | MOVE_CAPTURE,
                         ));
@@ -125,8 +113,8 @@ impl ArrayBoard {
                 moves.push(BitMove::create_capture(
                     index,
                     dest_index as u8,
-                    /* attacker= */ PieceType::Pawn as u16,
-                    /* victim= */ piece_type(dest_piece) as u16,
+                    /* source_piece = */ PieceType::Pawn,
+                    /* captured = */ piece_type(dest_piece),
                     None,
                     MOVE_CAPTURE,
                 ));
@@ -137,8 +125,8 @@ impl ArrayBoard {
                 moves.push(BitMove::create_capture(
                     index,
                     dest_index as u8,
-                    /* attacker= */ PieceType::Pawn as u16,
-                    /* victim= */ piece_type(dest_piece) as u16,
+                    /* source_piece = */ PieceType::Pawn,
+                    /* captured = */ piece_type(dest_piece),
                     None,
                     MOVE_CAPTURE,
                 ));
@@ -155,12 +143,19 @@ impl ArrayBoard {
                 moves.push(BitMove::create(
                     index,
                     dest_index as u8,
+                    PieceType::Pawn,
                     Some(promote_to),
                     MOVE_PROMO,
                 ));
             }
         } else {
-            moves.push(BitMove::create(index, dest_index as u8, None, 0));
+            moves.push(BitMove::create(
+                index,
+                dest_index as u8,
+                PieceType::Pawn,
+                None,
+                0,
+            ));
         }
 
         // Pawn double advance
@@ -170,7 +165,13 @@ impl ArrayBoard {
         }
         let double = (dest_index as i8 + (BOARD_SIZE as i8 * forward)) as usize;
         if self.get_piece(double) == 0 {
-            moves.push(BitMove::create(index, double as u8, None, 0));
+            moves.push(BitMove::create(
+                index,
+                double as u8,
+                PieceType::Pawn,
+                None,
+                0,
+            ));
         }
         moves
     }
@@ -191,7 +192,7 @@ impl ArrayBoard {
             }
             let (mut dest_index, mut out_of_bounds) = index_plus_coord(index as i8, dir);
             while is_multi_step && (!out_of_bounds) && (self.get_piece(dest_index) == 0) {
-                moves.push(BitMove::create(index, dest_index as u8, None, 0));
+                moves.push(BitMove::create(index, dest_index as u8, piece, None, 0));
                 (dest_index, out_of_bounds) = index_plus_coord(dest_index as i8, dir);
             }
             if out_of_bounds {
@@ -202,23 +203,23 @@ impl ArrayBoard {
                 moves.push(BitMove::create_capture(
                     index,
                     dest_index as u8,
-                    /* attacker= */ piece as u16,
-                    /* victim= */ piece_type(dest_piece) as u16,
+                    /* source_piece = */ piece,
+                    /* captured = */ piece_type(dest_piece),
                     None,
                     MOVE_CAPTURE,
                 ));
             } else if !is_multi_step && dest_piece == 0 {
-                moves.push(BitMove::create(index, dest_index as u8, None, 0))
+                moves.push(BitMove::create(index, dest_index as u8, piece, None, 0));
             }
         }
         moves
     }
 
-    fn legal_moves_for_piece(&self, piece: u32, index: u8) -> Vec<BitMove> {
-        match num::FromPrimitive::from_u32(piece) {
-            Some(PieceType::Pawn) => self.legal_moves_for_pawn(index),
-            Some(piece_type) => self.legal_moves_general(piece_type, index),
-            _ => panic!("Weird piece: {}", piece),
+    pub fn legal_moves_for_piece(&self, piece: PieceType, index: u8) -> Vec<BitMove> {
+        match piece {
+            PieceType::Pawn => self.legal_moves_for_pawn(index),
+            PieceType::Empty => Vec::new(),
+            _ => self.legal_moves_general(piece, index),
         }
     }
 
@@ -248,7 +249,7 @@ impl ArrayBoard {
             }
             // println!("{:o} {} {:o}", index, piece, scan);
             let attacker = self.get_piece(scan);
-            if (piece_type(attacker) == piece as u32) && (by_white == is_piece_white(attacker)) {
+            if (piece_type(attacker) == piece) && (by_white == is_piece_white(attacker)) {
                 // println!("BIG HELLO");
                 return true;
             }
@@ -265,7 +266,7 @@ impl ArrayBoard {
                 continue;
             }
             let piece = self.get_piece(scan);
-            if piece_type(piece) == PieceType::Pawn as u32 && (by_white == is_piece_white(piece)) {
+            if piece_type(piece) == PieceType::Pawn && (by_white == is_piece_white(piece)) {
                 return true;
             }
         }
@@ -277,8 +278,8 @@ impl ArrayBoard {
     fn legal_castle_moves(&self) -> Vec<BitMove> {
         let mut moves = Vec::new();
         for shift in 0..2 {
-            let mask = 1 << (META_CASTLE + shift + if self.white_to_move() { 2 } else { 0 });
-            let castle = self.meta & mask;
+            let mask = 1 << (shift + if self.white_to_move() { 2 } else { 0 });
+            let castle = self.get_castle_rights() & mask;
             if castle == 0 {
                 continue;
             }
@@ -316,15 +317,15 @@ impl ArrayBoard {
             {
                 continue;
             }
-            moves.push(match castle >> META_CASTLE {
+            moves.push(match castle {
                 // e8g8 - black king-side
-                0b0001 => BitMove::create(0o04, 0o06, None, MOVE_CASTLE),
+                0b0001 => BitMove::create(0o04, 0o06, PieceType::King, None, MOVE_CASTLE),
                 // e8c8 - black queen-side
-                0b0010 => BitMove::create(0o04, 0o02, None, MOVE_CASTLE),
+                0b0010 => BitMove::create(0o04, 0o02, PieceType::King, None, MOVE_CASTLE),
                 // e1g1 - white king-side
-                0b0100 => BitMove::create(0o74, 0o76, None, MOVE_CASTLE),
+                0b0100 => BitMove::create(0o74, 0o76, PieceType::King, None, MOVE_CASTLE),
                 // e1c1 - white queen-side
-                0b1000 => BitMove::create(0o74, 0o72, None, MOVE_CASTLE),
+                0b1000 => BitMove::create(0o74, 0o72, PieceType::King, None, MOVE_CASTLE),
                 _ => panic!("Bad castle format {}", castle),
             });
         }
