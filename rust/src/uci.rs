@@ -1,6 +1,8 @@
-use super::arrayboard::{ArrayBoard, BitMove, STARTING_FEN};
-use super::book_moves::BookMoves;
-use super::engine;
+use crate::arrayboard::{ArrayBoard, STARTING_FEN};
+use crate::book_moves::BookMoves;
+use crate::chessboard::ChessBoard;
+use crate::engine;
+use crate::moves::BitMove;
 use std::cmp;
 use std::collections::HashMap;
 use std::io;
@@ -8,15 +10,11 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 fn go(
-    board_opt: Option<ArrayBoard>,
+    board: &mut impl ChessBoard,
     book_moves_opt: &Option<&BookMoves>,
     wtime: Option<u32>,
     btime: Option<u32>,
 ) {
-    if board_opt.is_none() {
-        println!("ERROR: No board has been initialized yet. Use 'position'.");
-        return;
-    }
     if let Some(book_moves) = book_moves_opt {
         let best_move = book_moves.pick_weighted_random();
         match best_move {
@@ -28,7 +26,6 @@ fn go(
         }
     }
 
-    let board = board_opt.unwrap();
     if board.white_to_move() && let Some(time_left) = wtime {
         if time_left <= 30000 {
             engine::MAX_DEPTH.store(4, Ordering::Relaxed);
@@ -129,9 +126,9 @@ pub fn run() {
                         ))
                     }
                     "sp" | "startpos" => {
-                        let mut nb = ArrayBoard::create_from_fen(STARTING_FEN);
+                        let mut board = ArrayBoard::create_from_fen(STARTING_FEN);
                         if instructions.len() > 3 {
-                            nb = instructions[3..].iter().fold(nb, |old_board, mv| {
+                            instructions[3..].iter().for_each(|mv| {
                                 book_moves_tracker = match book_moves_tracker {
                                     Some(bm) => bm.get_child(mv),
                                     None => None,
@@ -145,7 +142,7 @@ pub fn run() {
                             // the search is to increment the given board state.
                             // hist_data.pop();
                         }
-                        Some(nb)
+                        Some(board)
                     }
                     _ => None,
                 };

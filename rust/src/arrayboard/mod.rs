@@ -45,15 +45,6 @@ pub struct ArrayBoard {
     hist_data: Vec<u64>,
 }
 
-#[allow(dead_code)]
-#[derive(Copy, Clone)]
-pub struct BitMove {
-    source_square: u8,
-    dest_square: u8,
-    promote_to: Option<PieceType>,
-    pub meta: u16,
-}
-
 // Private Helper functions
 pub fn algebraic_to_index(alg: &str) -> u16 {
     let col = (alg.bytes().nth(0).unwrap() - ('a' as u8)) as u16;
@@ -61,7 +52,7 @@ pub fn algebraic_to_index(alg: &str) -> u16 {
     (BOARD_SIZE as u16) * (8 - row) + col
 }
 
-fn index_to_algebraic(index: u32) -> String {
+pub fn index_to_algebraic(index: u32) -> String {
     let file = (('a' as u8) + (index % BOARD_SIZE) as u8) as char;
     let rank = 8 - (index / BOARD_SIZE);
     String::from(file) + &rank.to_string()
@@ -69,51 +60,7 @@ fn index_to_algebraic(index: u32) -> String {
 
 // Struct implementations
 impl ArrayBoard {
-    // Static factory method
-    pub fn create_from_fen(fen: &str) -> ArrayBoard {
-        let fen_arr: Vec<&str> = fen.split(' ').collect();
-        let mut board: [u8; 64] = [0; 64];
-        let mut index: usize = 0;
-        for fen_row in fen_arr[0].split('/') {
-            for c in fen_row.chars() {
-                if c.is_digit(10) {
-                    index += c.to_digit(10).unwrap() as usize;
-                    continue;
-                }
-                let player = if c.is_lowercase() { 0 } else { 1 };
-                board[index] = (player | (char_to_piece(c) << PIECE_TYPE)) as u8;
-                index += 1;
-            }
-        }
-        // META: Side to play
-        let mut meta = 0;
-        if fen_arr[1].starts_with('w') {
-            meta |= 1
-        }
-        // META: Castles
-        for c in fen_arr[2].chars() {
-            // HACK ALERT: Start one bit over since sideToMove bit is bit 0
-            let ind = match c {
-                'k' => 0b00010,
-                'q' => 0b00100,
-                'K' => 0b01000,
-                'Q' => 0b10000,
-                _ => 0,
-            };
-            meta |= ind;
-        }
-        // META: En Passant
-        if !fen_arr[3].eq_ignore_ascii_case("-") {
-            meta |= algebraic_to_index(fen_arr[3]) << 4;
-        }
-        ArrayBoard { board, meta }
-    }
-
     // Getters ======================================================
-    pub fn white_to_move(&self) -> bool {
-        (self.meta & PIECE_SIDE_MASK as u16) == 1
-    }
-
     fn side_to_move(&self) -> u8 {
         if self.white_to_move {
             1
@@ -541,84 +488,6 @@ impl ChessBoard for ArrayBoard {
             if i % BOARD_SIZE == 7 {
                 println!("|");
             }
-        }
-    }
-
-    pub fn print_legal_moves(&self, verbose: bool) {
-        print!("Legal moves: ");
-        if verbose {
-            println!();
-        }
-        for m in self.generate_moves() {
-            if verbose {
-                println!("{} ({:b})", m.to_string(), m.meta);
-                continue;
-            }
-            print!("{}, ", m.to_string());
-        }
-        println!("");
-    }
-}
-
-impl BitMove {
-    pub fn from_string(mv: &str) -> BitMove {
-        let source_square = algebraic_to_index(&mv[..2]) as u8;
-        let dest_square = algebraic_to_index(&mv[2..4]) as u8;
-        let promote_to = match mv.chars().nth(4) {
-            Some('q') => Some(PieceType::Queen),
-            Some('r') => Some(PieceType::Rook),
-            Some('b') => Some(PieceType::Bishop),
-            Some('n') => Some(PieceType::Knight),
-            _ => None,
-        };
-        BitMove {
-            source_square,
-            dest_square,
-            promote_to,
-            meta: 0,
-        }
-    }
-
-    pub fn to_string(&self) -> String {
-        index_to_algebraic(self.source_square as u32)
-            + &index_to_algebraic(self.dest_square as u32)
-            + match self.promote_to {
-                Some(PieceType::Queen) => "q",
-                Some(PieceType::Knight) => "n",
-                Some(PieceType::Bishop) => "b",
-                Some(PieceType::Rook) => "r",
-                _ => "",
-            }
-    }
-
-    pub fn create(
-        source_square: u8,
-        dest_square: u8,
-        promote_to: Option<PieceType>,
-        meta: u16,
-    ) -> BitMove {
-        BitMove {
-            source_square,
-            dest_square,
-            promote_to,
-            meta,
-        }
-    }
-
-    pub fn create_capture(
-        source_square: u8,
-        dest_square: u8,
-        attacker: u16,
-        victim: u16,
-        promote_to: Option<PieceType>,
-        meta: u16,
-    ) -> BitMove {
-        BitMove {
-            source_square,
-            dest_square,
-            promote_to,
-            // Most Valuable Victim / Least Valuable Attacker
-            meta: meta | (victim * 10 - attacker),
         }
     }
 }

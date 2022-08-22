@@ -6,6 +6,7 @@ extern crate test;
 extern crate num_derive;
 
 mod arrayboard;
+mod chessboard;
 mod book_moves;
 mod engine;
 mod moves;

@@ -231,7 +231,7 @@ fn print_info(score: i64, nodes: u64, start: Instant, pv: &str) {
     }
 }
 
-fn eval(board: ArrayBoard) -> i64 {
+fn eval(board: &impl ChessBoard) -> i64 {
     let mut game_phase = 0;
     let mut w_mg = 0;
     let mut b_mg = 0;
@@ -331,7 +331,7 @@ fn quiesce(
 }
 
 pub fn search(
-    board: ArrayBoard,
+    board: &mut impl ChessBoard,
     mut alpha: i64,
     beta: i64,
     depth: u8,
