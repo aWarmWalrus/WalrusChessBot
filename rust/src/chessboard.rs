@@ -8,7 +8,7 @@ pub trait ChessBoard {
     fn generate_moves(&self) -> Vec<BitMove>;
 
     fn make_move(&mut self, mv: &mut BitMove) -> Result<bool, String>;
-    fn take_back_move(&mut self, mv: &BitMove);
+    fn take_back_move(&mut self, mv: &BitMove) -> Result<(), String>;
     fn get_hash(&self) -> u64;
 
     fn get_piece(&self, index: usize) -> u32;
@@ -16,4 +16,7 @@ pub trait ChessBoard {
 
     fn is_king_checked(&self) -> bool;
     fn pretty_print(&self, verbose: bool);
+
+    // The number of times the board's current position has appeared in the history data.
+    fn repetitions(&self) -> u32;
 }

@@ -73,24 +73,33 @@ fn perft(
 
 fn main() {
     if DO_DEBUG {
-        // let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
-        // // board.pretty_print(true);
-        // let mut mv_w = BitMove::create(0o64, 0o54, PieceType::Pawn, None, 0);
-        // let mut mv_b = BitMove::create(0o10, 0o20, PieceType::Pawn, None, 0);
-        // let mut mv_w1 = BitMove::create(0o63, 0o53, PieceType::Pawn, None, 0);
-        // let mut mv_b1 = BitMove::create(0o11, 0o21, PieceType::Pawn, None, 0);
-        //
-        // board.make_move(&mut mv_w1);
-        // board.make_move(&mut mv_b1);
-        // board.make_move(&mut mv_w);
-        // board.make_move(&mut mv_b);
-        // board.pretty_print(true);
+        let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
+        board.pretty_print(true);
+        let mut mv_w = BitMove::create(0o64, 0o54, PieceType::Pawn, None, 0);
+        let mut mv_b = BitMove::create(0o10, 0o20, PieceType::Pawn, None, 0);
+        let mut mv_w1 = BitMove::create(0o63, 0o53, PieceType::Pawn, None, 0);
+        let mut mv_b1 = BitMove::create(0o11, 0o21, PieceType::Pawn, None, 0);
+
+        board.make_move(&mut mv_w1);
+        board.make_move(&mut mv_b1);
+        board.make_move(&mut mv_w);
+        board.make_move(&mut mv_b);
+        board.pretty_print(true);
+
+        board.take_back_move(&mut mv_b);
+        board.pretty_print(true);
+        board.take_back_move(&mut mv_w);
+        board.pretty_print(true);
+        board.take_back_move(&mut mv_b1);
+        board.pretty_print(true);
+        board.take_back_move(&mut mv_w1);
+        board.pretty_print(true);
 
         // UNCOMMENT THIS IF YOU WANT MORE RANDOM NUMBERS
-        let mut rng = rand::thread_rng();
-        for _ in 0..16 {
-            println!("{},", rng.gen::<u64>());
-        }
+        // let mut rng = rand::thread_rng();
+        // for _ in 0..16 {
+        //     println!("{},", rng.gen::<u64>());
+        // }
     } else if DO_PERFT {
         let mut board = ArrayBoard::create_from_fen(arrayboard::STARTING_FEN);
         let start = Instant::now();

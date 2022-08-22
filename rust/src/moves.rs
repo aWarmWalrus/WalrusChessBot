@@ -73,8 +73,6 @@ impl BitMove {
             Some('n') => Some(PieceType::Knight),
             _ => None,
         };
-        // I think my bug is somewhere here.... our hash is behaving differently depending on if
-        // it's a from_string() bitmove or a generated bitmove.
         BitMove {
             source_square,
             dest_square,

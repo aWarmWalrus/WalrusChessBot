@@ -286,21 +286,34 @@ fn quiesce(
             continue;
         }
         match board.make_move(&mut mv) {
-            Ok(true) => {
-                if let Ok((q_score, q_nodes)) = quiesce(board, -beta, -alpha, depth + 1) {
+            Ok(true) => match quiesce(board, -beta, -alpha, depth + 1) {
+                Ok((q_score, q_nodes)) => {
                     nodes += q_nodes;
                     if -q_score >= beta {
-                        board.take_back_move(&mv);
+                        if let Err(mut e) = board.take_back_move(&mv) {
+                            panic!("QUIESCE A {}", e);
+                            e.push(' ');
+                            e.push_str(&mv.to_string());
+                            return Err(e);
+                        }
                         return Ok((beta, nodes));
                     }
                     if -q_score > alpha {
                         alpha = -q_score;
                     }
                 }
-            }
+                Err(e) => {
+                    if let Err(e) = board.take_back_move(&mv) {
+                        panic!("QUIESCE B {}", e);
+                    }
+                    return Err(e);
+                }
+            },
             Ok(false) => (),
             Err(mut e) => {
-                board.take_back_move(&mv);
+                if let Err(e) = board.take_back_move(&mv) {
+                    panic!("QUIESCE C {}", e);
+                }
                 println!("Bad move!! {}", mv.to_string());
                 board.pretty_print(true);
                 e.push(' ');
@@ -308,41 +321,13 @@ fn quiesce(
                 return Err(e);
             }
         }
-        board.take_back_move(&mv);
+        if let Err(e) = board.take_back_move(&mv) {
+            board.pretty_print(true);
+            panic!("QUIESCE D {}", e);
+        }
     }
 
     return Ok((alpha, nodes));
-}
-
-fn increment_board_hist(hash: u64, hist_data: &mut Vec<u64>) -> u8 {
-    hist_data.push(hash);
-
-    let mut count = 0;
-    for hist in hist_data.iter().rev().step_by(2) {
-        if *hist == hash {
-            count += 1;
-        }
-    }
-    count
-}
-
-fn decrement_board_hist(hash: u64, hist_data: &mut Vec<u64>) -> Result<(), String> {
-    if let Some(hist) = hist_data.pop() {
-        if hist != hash {
-            let all_hist = hist_data.iter().fold(String::from(""), |mut acc, it| {
-                acc.push_str(format!("|  {}  ", it % 1000000).as_str());
-                return acc;
-            });
-            return Err(format!(
-                "popped hash ({}) does not match decremented hash ({}).\nhist_data contents: {}\nMove stack:",
-                hist % 1000000,
-                hash % 1000000,
-                all_hist,
-            ));
-        }
-        return Ok(());
-    }
-    Err(String::from("hist_data is empty!! Move stack:"))
 }
 
 pub fn search(
@@ -350,7 +335,6 @@ pub fn search(
     mut alpha: i64,
     beta: i64,
     depth: u8,
-    hist_data: &mut Vec<u64>,
 ) -> Result<(String, i64, u64), String> {
     if depth == MAX_DEPTH.load(Ordering::Relaxed) {
         if QUIESCE {
@@ -365,22 +349,6 @@ pub fn search(
         }
         return Ok((String::from(""), eval(board), 1));
     }
-    let moves = board.generate_moves();
-
-    let hash = board.get_hash();
-    let reps = increment_board_hist(hash, hist_data);
-    // 3-fold stalemate.
-    if reps >= 3 {
-        if let Err(e) = decrement_board_hist(hash, hist_data) {
-            return Err(e);
-        }
-        // It's a stalemate. For some reason, lichess sends us one last 'go' command, so just
-        // return the first move we have.
-        if moves.len() > 0 {
-            return Ok((moves[0].to_string(), 0, 1));
-        }
-        return Ok(("".to_string(), 0, 1));
-    }
 
     let mut nodes = 1;
     let mut best_pv: String = String::from("");
@@ -391,24 +359,30 @@ pub fn search(
     };
 
     let mut legal_moves = 0;
-    for (i, mut mv) in moves.into_iter().enumerate() {
+    for (i, mut mv) in board.generate_moves().into_iter().enumerate() {
         if depth == 0 {
             println!("info currmove {} currmovenumber {i}", mv.to_string());
         }
         match board.make_move(&mut mv) {
             Ok(true) => {
                 legal_moves += 1;
-                match search(board, -beta, -alpha, depth + 1, hist_data) {
+                if board.repetitions() >= 3 {
+                    if let Err(mut e) = board.take_back_move(&mv) {
+                        e.push(' ');
+                        e.push_str(&mv.to_string());
+                        return Err(e);
+                    }
+                    return Ok((mv.to_string(), 0, nodes));
+                }
+                match search(board, -beta, -alpha, depth + 1) {
                     Ok((pv, score, child_nodes)) => {
                         nodes += child_nodes;
                         if -score >= beta {
-                            if let Err(mut e) = decrement_board_hist(hash, hist_data) {
-                                board.take_back_move(&mv);
+                            if let Err(mut e) = board.take_back_move(&mv) {
                                 e.push(' ');
                                 e.push_str(&mv.to_string());
                                 return Err(e);
                             }
-                            board.take_back_move(&mv);
                             return Ok((mv.to_string() + " " + &pv, beta, nodes));
                         }
                         if -score > alpha {
@@ -439,21 +413,19 @@ pub fn search(
                 return Err(e);
             }
         }
-        board.take_back_move(&mv);
-    }
-    if legal_moves == 0 {
-        if let Err(e) = decrement_board_hist(hash, hist_data) {
+        if let Err(mut e) = board.take_back_move(&mv) {
+            e.push(' ');
+            e.push_str(&mv.to_string());
             return Err(e);
         }
+    }
+    if legal_moves == 0 {
         if board.is_king_checked() {
             // let mut line = String::new();
             // let _res = std::io::stdin().read_line(&mut line);
             return Ok(("".to_string(), -CHECKMATE + depth as i64, 1));
         }
         return Ok(("".to_string(), 0, 1));
-    }
-    if let Err(e) = decrement_board_hist(hash, hist_data) {
-        return Err(e);
     }
     Ok((best_pv, alpha, nodes))
 }

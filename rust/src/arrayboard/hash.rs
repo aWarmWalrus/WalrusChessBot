@@ -803,14 +803,31 @@ pub fn hash_piece(hash: u64, piece_bits: u8, index: usize) -> u64 {
         PieceType::Pawn => (piece_bits - 2) * 48 + (index as u8 - 8),
         _ => 96 + (piece_bits - 4) * 64 + (index as u8),
     } as usize;
+    // println!(
+    //     "    hash PIECE                    {:02} @ {:02o} |  {}  => {}",
+    //     piece_bits,
+    //     index,
+    //     hash % 1000000,
+    //     (hash ^ PIECE_SQUARE_VALUES[i]) % 1000000
+    // );
     hash ^ PIECE_SQUARE_VALUES[i]
 }
 
 pub fn hash_side_to_move(hash: u64) -> u64 {
+    // println!(
+    //     "    hash SIDE TO MOVE                     |  {}  => {}",
+    //     hash % 1000000,
+    //     (hash ^ SIDE_TO_MOVE) % 1000000
+    // );
     hash ^ SIDE_TO_MOVE
 }
 
 pub fn hash_castle_rights(hash: u64, old: u8, new: u8) -> u64 {
+    // println!(
+    //     "    hash CASTLE RIGHTS old {old:b}  new {new:b} |  {}  => {}",
+    //     hash % 1000000,
+    //     (hash ^ CASTLE_RIGHTS[old as usize] ^ CASTLE_RIGHTS[new as usize]) % 1000000
+    // );
     // Even though xor is its own inverse, save 2 memory lookups maybe by avoiding the hashing?
     if old == new {
         hash
@@ -820,6 +837,7 @@ pub fn hash_castle_rights(hash: u64, old: u8, new: u8) -> u64 {
 }
 
 pub fn hash_enpassant(mut hash: u64, old: u8, new: u8) -> u64 {
+    // let ohash = hash;
     let old_col = 0b111 & old as usize;
     let new_col = 0b111 & new as usize;
     if old_col == new_col {
@@ -831,5 +849,10 @@ pub fn hash_enpassant(mut hash: u64, old: u8, new: u8) -> u64 {
     if new != 0 {
         hash = hash ^ ENPASSANT[new_col];
     }
+    // println!(
+    //     "    hash CASTLE RIGHTS old {old:o}  new {new:o} |  {}  => {}",
+    //     ohash % 1000000,
+    //     hash % 1000000
+    // );
     hash
 }

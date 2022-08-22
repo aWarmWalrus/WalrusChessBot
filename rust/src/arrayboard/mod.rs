@@ -23,7 +23,6 @@ const PIECE_MASK: u32 = 0b1111;
 const ROW_OFFSET: u8 = 3;
 const ROW_MASK: u8 = 0b111000;
 const COL_MASK: u8 = 0b000111;
-// const INDEX_MASK: u8 = 0b111111;
 
 // Fenstrings
 pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -42,6 +41,8 @@ pub struct ArrayBoard {
     castle_rights: u8,
     en_passant: u8,
     hash: u64,
+
+    hist_data: Vec<u64>,
 }
 
 // Private Helper functions
@@ -186,6 +187,31 @@ impl ArrayBoard {
         }
     }
 
+    fn increment_board_hist(&mut self, hash: u64) {
+        // println!("  >>  incrementing hash: {}", hash);
+        self.hist_data.push(hash);
+    }
+
+    fn decrement_board_hist(&mut self, hash: u64) -> Result<(), String> {
+        // println!("  <<  decrementing hash: {}", hash);
+        if let Some(hist) = self.hist_data.pop() {
+            if hist != hash {
+                let all_hist = self.hist_data.iter().fold(String::from(""), |mut acc, it| {
+                    acc.push_str(format!("|  {}  ", it % 1000000).as_str());
+                    return acc;
+                });
+                return Err(format!(
+                    "popped hash ({}) does not match decremented hash ({}).\nhist_data contents: {}\nMove stack:",
+                    hist % 1000000,
+                    hash % 1000000,
+                    all_hist,
+                ));
+            }
+            return Ok(());
+        }
+        Err(String::from("hist_data is empty!! Move stack:"))
+    }
+
     // DEBUGGING AND PRINTING FUNCTIONS ===================================
     pub fn print_legal_moves(&self, verbose: bool) {
         print!("Legal moves: ");
@@ -271,6 +297,7 @@ impl ChessBoard for ArrayBoard {
             castle_rights,
             en_passant,
             hash,
+            hist_data: Vec::new(),
         }
     }
 
@@ -286,8 +313,9 @@ impl ChessBoard for ArrayBoard {
         // let mut r = rand::thread_rng();
         // let i = r.gen::<u8>();
         if (source_piece == 0) || self.is_opponent_piece(source_piece) {
-            self.pretty_print(true);
             self.swap_side_to_move();
+            self.increment_board_hist(self.get_hash());
+            self.pretty_print(true);
             return Err(format!(
                 "Illegal move: {} {} {:?}. Move stack: {}",
                 bit_move.to_string(),
@@ -342,9 +370,11 @@ impl ChessBoard for ArrayBoard {
 
         if let Some(b) = self.is_king_safe() {
             self.swap_side_to_move();
+            self.increment_board_hist(self.get_hash());
             return Ok(b);
         } else {
             self.swap_side_to_move();
+            self.increment_board_hist(self.get_hash());
             self.pretty_print(true);
             return Err(String::from(
                 "Illegal state: Could not find king! Move stack:",
@@ -352,8 +382,10 @@ impl ChessBoard for ArrayBoard {
         }
     }
 
-    fn take_back_move(&mut self, mv: &BitMove) {
-        // Restoring the board meta needs to happen before calls to self.side_to_move() and self.get_enpassant().
+    fn take_back_move(&mut self, mv: &BitMove) -> Result<(), String> {
+        if let Err(e) = self.decrement_board_hist(self.get_hash()) {
+            return Err(format!("Board hist decrement error: {}", e));
+        }
         self.swap_side_to_move();
         self.set_enpassant(mv.get_prior_enpassant());
         self.set_castle_rights(mv.get_prior_castle_rights());
@@ -370,7 +402,13 @@ impl ChessBoard for ArrayBoard {
 
         let source_piece = piece_to_bits(mv.source_piece, self.side_to_move());
         self.add_piece(mv.source_square as usize, source_piece);
-        self.remove_piece(mv.dest_square as usize, source_piece);
+        match mv.promote_to {
+            Some(promoted) => self.remove_piece(
+                mv.dest_square as usize,
+                piece_to_bits(promoted, self.side_to_move()),
+            ),
+            None => self.remove_piece(mv.dest_square as usize, source_piece),
+        };
 
         if mv.source_piece == PieceType::Pawn
             && mv.dest_square == self.get_enpassant()
@@ -388,6 +426,17 @@ impl ChessBoard for ArrayBoard {
                 piece_to_bits(mv.captured, self.not_side_to_move()),
             );
         }
+        return Ok(());
+    }
+
+    fn repetitions(&self) -> u32 {
+        let mut count = 0;
+        for hist in self.hist_data.iter().rev().step_by(2) {
+            if *hist == self.get_hash() {
+                count += 1;
+            }
+        }
+        count
     }
 
     fn generate_moves(&self) -> Vec<BitMove> {
@@ -421,6 +470,11 @@ impl ChessBoard for ArrayBoard {
                 self.get_hash() % 1000000
             );
             println!(" en passant | castle | side to move | hash");
+            let all_hist = self.hist_data.iter().fold(String::from(""), |mut acc, it| {
+                acc.push_str(format!("{}, ", it % 1000000).as_str());
+                return acc;
+            });
+            println!("  hist_data: [{}]", all_hist);
         }
         for i in 0..64 {
             if i % BOARD_SIZE == 0 {
