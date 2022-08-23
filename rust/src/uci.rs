@@ -35,10 +35,10 @@ fn go(
     };
     if time_left == 0 || board.get_move_number() < 14 {
         // don't change max depth
-    } else if time_left <= 10000 {
-        engine::MAX_DEPTH.store(4, Ordering::Relaxed); // 10 sec
-    } else if time_left <= 30000 {
-        engine::MAX_DEPTH.store(5, Ordering::Relaxed); // 30 sec
+        // } else if time_left <= 10000 {
+        //     engine::MAX_DEPTH.store(4, Ordering::Relaxed); // 10 sec
+    } else if time_left <= 15000 {
+        engine::MAX_DEPTH.store(5, Ordering::Relaxed); // 15 sec
     } else if time_left <= 60000 {
         engine::MAX_DEPTH.store(6, Ordering::Relaxed); // 1 min
     } else if time_left <= 600000 {
@@ -113,6 +113,7 @@ pub fn run() {
             }
             "ucinewgame" => {
                 book_moves_tracker = Some(&book_moves_root);
+                engine::MAX_DEPTH.store(engine::INIT_DEPTH, Ordering::Relaxed);
             }
             "isready" => {
                 println!("readyok");
