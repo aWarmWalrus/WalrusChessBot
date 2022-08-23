@@ -26,26 +26,27 @@ fn go(
         }
     }
 
-    if board.white_to_move() && let Some(time_left) = wtime {
-        if time_left <= 30000 {
-            engine::MAX_DEPTH.store(4, Ordering::Relaxed);
-        } else if time_left <= 60000 {
-            engine::MAX_DEPTH.store(5, Ordering::Relaxed);
-        } else if time_left <= 300000 {
-            engine::MAX_DEPTH.store(6, Ordering::Relaxed);
-        } else {
-            engine::MAX_DEPTH.store(7, Ordering::Relaxed);
-        }
-    } else if !board.white_to_move() && let Some(time_left) = btime {
-        if time_left <= 30000 {
-            engine::MAX_DEPTH.store(4, Ordering::Relaxed);
-        } else if time_left <= 60000 {
-            engine::MAX_DEPTH.store(5, Ordering::Relaxed);
-        } else if time_left <= 300000 {
-            engine::MAX_DEPTH.store(6, Ordering::Relaxed);
-        } else {
-            engine::MAX_DEPTH.store(7, Ordering::Relaxed);
-        }
+    let time_left = if board.white_to_move() && wtime.is_some() {
+        wtime.unwrap()
+    } else if !board.white_to_move() && btime.is_some() {
+        btime.unwrap()
+    } else {
+        0
+    };
+    if time_left == 0 || board.get_move_number() < 14 {
+        // don't change max depth
+    } else if time_left <= 10000 {
+        engine::MAX_DEPTH.store(4, Ordering::Relaxed); // 10 sec
+    } else if time_left <= 30000 {
+        engine::MAX_DEPTH.store(5, Ordering::Relaxed); // 30 sec
+    } else if time_left <= 60000 {
+        engine::MAX_DEPTH.store(6, Ordering::Relaxed); // 1 min
+    } else if time_left <= 600000 {
+        engine::MAX_DEPTH.store(7, Ordering::Relaxed); // 10 min
+    } else if time_left <= 1800000 {
+        engine::MAX_DEPTH.store(8, Ordering::Relaxed); // 30 min
+    } else {
+        engine::MAX_DEPTH.store(9, Ordering::Relaxed);
     }
 
     let start = Instant::now();
@@ -136,11 +137,7 @@ pub fn run() {
                                 if let Err(e) = board.make_move(&mut BitMove::from_string(mv)) {
                                     panic!("{}", e);
                                 }
-                                // hist_data.push(board.get_hash());
                             });
-                            // CODE SMELL ALERT. Pop last one off, since the first thing we do in
-                            // the search is to increment the given board state.
-                            // hist_data.pop();
                         }
                         Some(board)
                     }

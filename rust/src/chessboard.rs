@@ -8,10 +8,11 @@ pub trait ChessBoard {
     fn generate_moves(&self) -> Vec<BitMove>;
 
     fn make_move(&mut self, mv: &mut BitMove) -> Result<bool, String>;
-    fn take_back_move(&mut self, mv: &BitMove) -> Result<(), String>;
-    fn get_hash(&self) -> u64;
+    fn take_back_move(&mut self, mv: &BitMove);
 
+    // Basic getters.
     fn get_piece(&self, index: usize) -> u32;
+    fn get_move_number(&self) -> u32;
     fn white_to_move(&self) -> bool;
 
     fn is_king_checked(&self) -> bool;

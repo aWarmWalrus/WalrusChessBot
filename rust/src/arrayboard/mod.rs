@@ -41,7 +41,7 @@ pub struct ArrayBoard {
     castle_rights: u8,
     en_passant: u8,
     hash: u64,
-
+    move_number: u32,
     hist_data: Vec<u64>,
 }
 
@@ -83,6 +83,10 @@ impl ArrayBoard {
 
     fn get_castle_rights(&self) -> u8 {
         self.castle_rights
+    }
+
+    fn get_hash(&self) -> u64 {
+        self.hash
     }
 
     fn is_opponent_piece(&self, piece: u32) -> bool {
@@ -234,6 +238,10 @@ impl ChessBoard for ArrayBoard {
         self.board[index] as u32
     }
 
+    fn get_move_number(&self) -> u32 {
+        self.move_number
+    }
+
     fn white_to_move(&self) -> bool {
         self.white_to_move
     }
@@ -241,10 +249,6 @@ impl ChessBoard for ArrayBoard {
     fn is_king_checked(&self) -> bool {
         !self.is_king_safe().unwrap()
         // (self.meta & META_KING_CHECK_MASK) > 0
-    }
-
-    fn get_hash(&self) -> u64 {
-        self.hash
     }
 
     // Static factory method
@@ -297,6 +301,7 @@ impl ChessBoard for ArrayBoard {
             castle_rights,
             en_passant,
             hash,
+            move_number: 0,
             hist_data: Vec::new(),
         }
     }
@@ -307,6 +312,7 @@ impl ChessBoard for ArrayBoard {
         bit_move.set_prior_castle_rights(self.get_castle_rights());
         bit_move.set_prior_enpassant(self.get_enpassant());
 
+        self.move_number += 1;
         let source_piece = self.get_piece(bit_move.source_square as usize);
         let mut end_piece = source_piece as u8; // only for pawn promotion situation.
 
@@ -382,10 +388,11 @@ impl ChessBoard for ArrayBoard {
         }
     }
 
-    fn take_back_move(&mut self, mv: &BitMove) -> Result<(), String> {
+    fn take_back_move(&mut self, mv: &BitMove) {
         if let Err(e) = self.decrement_board_hist(self.get_hash()) {
-            return Err(format!("Board hist decrement error: {}", e));
+            panic!("Board hist decrement error: {}", e);
         }
+        self.move_number -= 1;
         self.swap_side_to_move();
         self.set_enpassant(mv.get_prior_enpassant());
         self.set_castle_rights(mv.get_prior_castle_rights());
@@ -426,7 +433,6 @@ impl ChessBoard for ArrayBoard {
                 piece_to_bits(mv.captured, self.not_side_to_move()),
             );
         }
-        return Ok(());
     }
 
     fn repetitions(&self) -> u32 {

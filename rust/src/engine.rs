@@ -290,12 +290,7 @@ fn quiesce(
                 Ok((q_score, q_nodes)) => {
                     nodes += q_nodes;
                     if -q_score >= beta {
-                        if let Err(mut e) = board.take_back_move(&mv) {
-                            panic!("QUIESCE A {}", e);
-                            e.push(' ');
-                            e.push_str(&mv.to_string());
-                            return Err(e);
-                        }
+                        board.take_back_move(&mv);
                         return Ok((beta, nodes));
                     }
                     if -q_score > alpha {
@@ -303,17 +298,13 @@ fn quiesce(
                     }
                 }
                 Err(e) => {
-                    if let Err(e) = board.take_back_move(&mv) {
-                        panic!("QUIESCE B {}", e);
-                    }
+                    board.take_back_move(&mv);
                     return Err(e);
                 }
             },
             Ok(false) => (),
             Err(mut e) => {
-                if let Err(e) = board.take_back_move(&mv) {
-                    panic!("QUIESCE C {}", e);
-                }
+                board.take_back_move(&mv);
                 println!("Bad move!! {}", mv.to_string());
                 board.pretty_print(true);
                 e.push(' ');
@@ -321,10 +312,7 @@ fn quiesce(
                 return Err(e);
             }
         }
-        if let Err(e) = board.take_back_move(&mv) {
-            board.pretty_print(true);
-            panic!("QUIESCE D {}", e);
-        }
+        board.take_back_move(&mv);
     }
 
     return Ok((alpha, nodes));
@@ -367,22 +355,14 @@ pub fn search(
             Ok(true) => {
                 legal_moves += 1;
                 if board.repetitions() >= 3 {
-                    if let Err(mut e) = board.take_back_move(&mv) {
-                        e.push(' ');
-                        e.push_str(&mv.to_string());
-                        return Err(e);
-                    }
+                    board.take_back_move(&mv);
                     return Ok((mv.to_string(), 0, nodes));
                 }
                 match search(board, -beta, -alpha, depth + 1) {
                     Ok((pv, score, child_nodes)) => {
                         nodes += child_nodes;
                         if -score >= beta {
-                            if let Err(mut e) = board.take_back_move(&mv) {
-                                e.push(' ');
-                                e.push_str(&mv.to_string());
-                                return Err(e);
-                            }
+                            board.take_back_move(&mv);
                             return Ok((mv.to_string() + " " + &pv, beta, nodes));
                         }
                         if -score > alpha {
@@ -413,16 +393,10 @@ pub fn search(
                 return Err(e);
             }
         }
-        if let Err(mut e) = board.take_back_move(&mv) {
-            e.push(' ');
-            e.push_str(&mv.to_string());
-            return Err(e);
-        }
+        board.take_back_move(&mv);
     }
     if legal_moves == 0 {
         if board.is_king_checked() {
-            // let mut line = String::new();
-            // let _res = std::io::stdin().read_line(&mut line);
             return Ok(("".to_string(), -CHECKMATE + depth as i64, 1));
         }
         return Ok(("".to_string(), 0, 1));
