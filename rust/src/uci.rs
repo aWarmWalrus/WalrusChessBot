@@ -9,7 +9,7 @@ use std::io;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-fn go(
+pub fn go(
     board: &mut impl ChessBoard,
     book_moves_opt: &Option<&BookMoves>,
     wtime: Option<u32>,
