@@ -799,9 +799,11 @@ pub fn initial_hash() -> u64 {
 // 288..351: white bishop hashes
 // and so forth.
 pub fn hash_piece(hash: u64, piece_bits: u8, index: usize) -> u64 {
-    let i = match piece_type(piece_bits as u32) {
-        PieceType::Pawn => (piece_bits - 2) * 48 + (index as u8 - 8),
-        _ => 96 + (piece_bits - 4) * 64 + (index as u8),
+    // println!("piece_bits: {piece_bits}    (piece_bits - 4) * 64: {}", piece_)
+    let p = piece_bits as u32;
+    let i = match piece_type(p) {
+        PieceType::Pawn => (p - 2) * 48 + (index as u32 - 8),
+        _ => 96 + (p - 4) * 64 + (index as u32),
     } as usize;
     // println!(
     //     "    hash PIECE                    {:02} @ {:02o} |  {}  => {}",

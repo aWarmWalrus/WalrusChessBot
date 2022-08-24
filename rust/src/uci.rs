@@ -35,18 +35,25 @@ fn go(
     };
     if time_left == 0 || board.get_move_number() < 14 {
         // don't change max depth
-        // } else if time_left <= 10000 {
-        //     engine::MAX_DEPTH.store(4, Ordering::Relaxed); // 10 sec
     } else if time_left <= 15000 {
-        engine::MAX_DEPTH.store(5, Ordering::Relaxed); // 15 sec
-    } else if time_left <= 60000 {
-        engine::MAX_DEPTH.store(6, Ordering::Relaxed); // 1 min
+        engine::MAX_DEPTH.store(5, Ordering::Relaxed); // less than 15 sec
+    } else if time_left <= 120000 {
+        engine::MAX_DEPTH.store(6, Ordering::Relaxed); // less than 2 min
     } else if time_left <= 600000 {
-        engine::MAX_DEPTH.store(7, Ordering::Relaxed); // 10 min
+        engine::MAX_DEPTH.store(7, Ordering::Relaxed); // less than 10 min
     } else if time_left <= 1800000 {
-        engine::MAX_DEPTH.store(8, Ordering::Relaxed); // 30 min
+        // less than 30 min. Don't spend too much time at the beginning of the game.
+        if board.get_move_number() > 20 {
+            engine::MAX_DEPTH.store(8, Ordering::Relaxed);
+        } else {
+            engine::MAX_DEPTH.store(7, Ordering::Relaxed);
+        }
     } else {
-        engine::MAX_DEPTH.store(9, Ordering::Relaxed);
+        if board.get_move_number() > 30 {
+            engine::MAX_DEPTH.store(9, Ordering::Relaxed);
+        } else {
+            engine::MAX_DEPTH.store(8, Ordering::Relaxed);
+        }
     }
 
     let start = Instant::now();

@@ -129,14 +129,19 @@ impl BitMove {
             Some(piece) => piece,
             None => source_piece,
         };
+        // Most Valuable Victim / Least Valuable Attacker
+        let capture_cost = if captured != PieceType::Empty {
+            captured as u16 * 10 - attacker as u16
+        } else {
+            0
+        };
         BitMove {
             source_square,
             dest_square,
             source_piece,
             captured,
             promote_to,
-            // Most Valuable Victim / Least Valuable Attacker
-            meta: meta | (captured as u16 * 10 - attacker as u16),
+            meta: meta | capture_cost,
             prior_castle_rights: 0,
             prior_enpassant: 0,
         }
