@@ -447,6 +447,7 @@ impl ChessBoard for ArrayBoard {
 
     fn generate_moves(&self) -> Vec<BitMove> {
         let mut moves: Vec<BitMove> = Vec::new();
+        moves.reserve(50);
         for i in 0..64 {
             let piece = self.get_piece(i);
             if piece == 0 || self.is_opponent_piece(piece) {
