@@ -1,4 +1,5 @@
 use crate::moves::BitMove;
+use crate::piece::PieceType;
 
 pub trait ChessBoard {
     // Factory method
@@ -12,6 +13,7 @@ pub trait ChessBoard {
 
     // Basic getters.
     fn get_piece(&self, index: usize) -> u32;
+    fn get_all_pieces(&self) -> String;
     fn get_move_number(&self) -> u32;
     fn white_to_move(&self) -> bool;
 

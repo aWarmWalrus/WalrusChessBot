@@ -193,7 +193,7 @@ const EG_TABLE: [[i16; 64]; 12] = initialize_tables(EG_PIECE_VALUES, EG_PESTO);
 const CHECKMATE: i64 = 100000000;
 
 pub const INIT_DEPTH: u8 = 6;
-pub static MAX_DEPTH: AtomicU8 = AtomicU8::new(6);
+pub static MAX_DEPTH: AtomicU8 = AtomicU8::new(7);
 pub const MAX_QUIESCE_DEPTH: u8 = 4;
 const DEBUG: bool = true;
 const QUIESCE: bool = true;

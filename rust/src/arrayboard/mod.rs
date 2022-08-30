@@ -17,9 +17,6 @@ use rand::Rng;
 
 // Constants and Enums
 const BOARD_SIZE: u32 = 8;
-const PIECE_SIZE: u32 = 4;
-const PIECE_MASK: u32 = 0b1111;
-
 const ROW_OFFSET: u8 = 3;
 const ROW_MASK: u8 = 0b111000;
 const COL_MASK: u8 = 0b000111;
@@ -249,6 +246,19 @@ impl ChessBoard for ArrayBoard {
     fn is_king_checked(&self) -> bool {
         !self.is_king_safe().unwrap()
         // (self.meta & META_KING_CHECK_MASK) > 0
+    }
+
+    fn get_all_pieces(&self) -> String {
+        let mut pieces = String::new();
+        pieces.reserve(32);
+        for i in 0..64 {
+            let p = self.board[i];
+            if p != 0 {
+                pieces.push_str(piece_to_char(p as u32, ""));
+                // pieces.push(piece_type(p as u32));
+            }
+        }
+        pieces
     }
 
     // Static factory method

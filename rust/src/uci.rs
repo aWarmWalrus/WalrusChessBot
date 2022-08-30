@@ -2,6 +2,7 @@ use crate::arrayboard::{ArrayBoard, STARTING_FEN};
 use crate::book_moves::BookMoves;
 use crate::chessboard::ChessBoard;
 use crate::engine;
+use crate::logging;
 use crate::moves::BitMove;
 use std::cmp;
 use std::collections::HashMap;
@@ -14,6 +15,7 @@ pub fn go(
     book_moves_opt: &Option<&BookMoves>,
     wtime: Option<u32>,
     btime: Option<u32>,
+    setup: &str,
 ) {
     if let Some(book_moves) = book_moves_opt {
         let best_move = book_moves.pick_weighted_random();
@@ -63,7 +65,7 @@ pub fn go(
         /* beta= */ i32::MAX as i64,
         /* depth=*/ 0,
     ) {
-        Ok((best, _score, nodes)) => {
+        Ok((best, score, nodes)) => {
             let tm = start.elapsed().as_millis();
             println!(
                 "info nodes {nodes} time {tm} nps {}",
@@ -72,8 +74,29 @@ pub fn go(
             if best.is_empty() {
                 board.pretty_print(true);
                 println!("ERROR: no moves possible");
+                logging::record_move(
+                    board.get_move_number(),
+                    engine::MAX_DEPTH.load(Ordering::Relaxed),
+                    tm as u64,
+                    nodes,
+                    score,
+                    "",
+                    &board.get_all_pieces(),
+                    setup,
+                );
             } else {
-                println!("bestmove {}", best.split_whitespace().nth(0).unwrap());
+                let bestmove = best.split_whitespace().nth(0).unwrap();
+                println!("bestmove {bestmove}");
+                logging::record_move(
+                    board.get_move_number(),
+                    engine::MAX_DEPTH.load(Ordering::Relaxed),
+                    tm as u64,
+                    nodes,
+                    score,
+                    bestmove,
+                    &board.get_all_pieces(),
+                    setup,
+                );
             }
         }
         Err(e) => {
@@ -85,6 +108,7 @@ pub fn go(
 pub fn run() {
     let book_moves_root: BookMoves = BookMoves::generate_from_file();
     let mut book_moves_tracker: Option<&BookMoves> = Some(&book_moves_root);
+    let mut setup = String::new();
 
     let mut board_opt: Option<ArrayBoard> = None;
     loop {
@@ -92,7 +116,9 @@ pub fn run() {
         let result = io::stdin().read_line(&mut buffer);
         if result.is_err() {
             println!("{:?}", result.err());
+            continue;
         }
+        let instr_cp = buffer.clone();
         let instructions: Vec<&str> = buffer.split_whitespace().collect();
         if instructions.len() == 0 {
             continue;
@@ -126,6 +152,7 @@ pub fn run() {
                 println!("readyok");
             }
             "p" | "position" => {
+                setup = String::from(instr_cp.trim());
                 book_moves_tracker = Some(&book_moves_root);
                 board_opt = match instructions[1] {
                     "fen" => {
@@ -166,7 +193,7 @@ pub fn run() {
                         println!("ERROR: No board has been initialized yet. Use 'position'.");
                     }
                     Some(board) => {
-                        go(board, &book_moves_tracker, wtime, btime);
+                        go(board, &book_moves_tracker, wtime, btime, &setup);
                     }
                 }
             }

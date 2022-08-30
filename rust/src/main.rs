@@ -9,6 +9,7 @@ mod arrayboard;
 mod book_moves;
 mod chessboard;
 mod engine;
+mod logging;
 mod moves;
 mod piece;
 mod uci;
@@ -21,7 +22,7 @@ use rand::Rng;
 use std::time::Instant;
 use test::Bencher;
 
-const DO_DEBUG: bool = true;
+const DO_DEBUG: bool = false;
 const DO_PERFT: bool = false;
 
 fn perft(
@@ -72,7 +73,7 @@ fn perft(
 fn main() {
     if DO_DEBUG {
         let mut board = ArrayBoard::create_from_fen(arrayboard::PERFT2_FEN);
-        uci::go(&mut board, &None, None, None);
+        uci::go(&mut board, &None, None, None, "");
 
         // board.pretty_print(true);
         // let mut mv_w = BitMove::create(0o64, 0o54, PieceType::Pawn, None, 0);
